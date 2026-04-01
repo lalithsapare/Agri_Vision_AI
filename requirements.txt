@@ -1,8 +1,9 @@
-streamlit
-google-genai
+
 joblib
 numpy
 pandas
 plotly
 pillow
 tensorflow
+streamlit==1.56.0
+google-genai
