@@ -6,5 +6,3 @@ pillow
 joblib
 scikit-learn
 google-generativeai
-tensorflow
-h5py
