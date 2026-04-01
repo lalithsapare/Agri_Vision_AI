@@ -6,3 +6,4 @@ pillow
 joblib
 scikit-learn
 google-generativeai
+streamlit google-genai
