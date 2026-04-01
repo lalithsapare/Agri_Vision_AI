@@ -5,5 +5,4 @@ plotly
 pillow
 joblib
 scikit-learn
-streamlit google-genai
 google-generativeai==0.8.6
