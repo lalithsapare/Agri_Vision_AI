@@ -395,7 +395,7 @@ def generate_gpt_like_reply(user_text, final_output=None, location="Andhra Prade
 - {location} seasonal rhythm drives 70% of success
 - Monsoon timing > any fertilizer/irrigation decision
 - Local disease patterns repeat yearly
-        """
+        """.format(location=location, season=season)
 
     elif "ndvi" in text or "health" in text:
         main_answer = """
@@ -431,7 +431,7 @@ def generate_gpt_like_reply(user_text, final_output=None, location="Andhra Prade
 
 **Pro Tip:** Run Smart Advisor first for personalized advice
         """
-        why_block = """
+        why_block = f"""
 **My Intelligence:**
 - Uses your latest Smart Advisor results
 - {location} + {season} optimized
@@ -440,20 +440,23 @@ def generate_gpt_like_reply(user_text, final_output=None, location="Andhra Prade
 
     return main_answer, why_block
 
+# FIXED: Correct dictionary syntax for simulation defaults
 def get_simulation_defaults(location, season):
-    data =         ("Andhra Pradesh", "Kharif"): {
-            "N": 90, "P": 42, "K": 43, "temperature": 28, "humidity": 82, "ph": 6.5, "rainfall": 220,
-            "soil_moisture": 48, "fertilizer": 110, "organic_matter": 2.1, "ec": 1.2, "organic_carbon": 0.82
+    data = {
+        ("Andhra Pradesh", "Kharif"): {
+            "N": 90, "P": 42, "K": 43, "temperature": 28, "humidity": 82, 
+            "ph": 6.5, "rainfall": 220, "soil_moisture": 48, "fertilizer": 110, 
+            "organic_matter": 2.1, "ec": 1.2, "organic_carbon": 0.82
         },
         ("Andhra Pradesh", "Rabi"): {
-            "N": 75, "P": 38, "K": 35, "temperature": 23, "humidity": 68, "ph": 6.8, "rainfall":
-                    ("Andhra Pradesh", "Rabi"): {
-            "N": 75, "P": 38, "K": 35, "temperature": 23, "humidity": 68, "ph": 6.8, "rainfall": 90,
-            "soil_moisture": 36, "fertilizer": 95, "organic_matter": 1.9, "ec": 1.0, "organic_carbon": 0.70
+            "N": 75, "P": 38, "K": 35, "temperature": 23, "humidity": 68, 
+            "ph": 6.8, "rainfall": 90, "soil_moisture": 36, "fertilizer": 95, 
+            "organic_matter": 1.9, "ec": 1.0, "organic_carbon": 0.70
         },
         ("Telangana", "Kharif"): {
-            "N": 88, "P": 40, "K": 41, "temperature": 29, "humidity": 78, "ph": 6.7, "rainfall": 180,
-            "soil_moisture": 42, "fertilizer": 105, "organic_matter": 2.0, "ec": 1.1, "organic_carbon": 0.76
+            "N": 88, "P": 40, "K": 41, "temperature": 29, "humidity": 78, 
+            "ph": 6.7, "rainfall": 180, "soil_moisture": 42, "fertilizer": 105, 
+            "organic_matter": 2.0, "ec": 1.1, "organic_carbon": 0.76
         }
     }
     return data.get((location, season), data[("Andhra Pradesh", "Kharif")])
@@ -625,7 +628,7 @@ elif page == "Smart Advisor":
 
 elif page == "Crop Recommendation":
     st.subheader("🌾 Crop Recommendation")
-    inputs = [num_input(f"Feature {i+1}", defaults.get(f"N", 50) + i*5) for i in range(7)]
+    inputs = [num_input(f"Feature {i+1}", defaults.get("N", 50) + i*5) for i in range(7)]
     if st.button("Recommend Crop"):
         crop, conf = agrimodels.predict_crop_recommendation(inputs)
         st.success(f"**Recommended: {crop}** ({conf}% confidence)")
