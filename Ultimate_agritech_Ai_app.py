@@ -441,8 +441,7 @@ def generate_gpt_like_reply(user_text, final_output=None, location="Andhra Prade
     return main_answer, why_block
 
 def get_simulation_defaults(location, season):
-    data = {
-        ("Andhra Pradesh", "Kharif"): {
+    data =         ("Andhra Pradesh", "Kharif"): {
             "N": 90, "P": 42, "K": 43, "temperature": 28, "humidity": 82, "ph": 6.5, "rainfall": 220,
             "soil_moisture": 48, "fertilizer": 110, "organic_matter": 2.1, "ec": 1.2, "organic_carbon": 0.82
         },
