@@ -4,6 +4,7 @@ pandas
 plotly
 pillow
 joblib
+scikit-learn
 google-generativeai
 tensorflow
-scikit-learn
+h5py
