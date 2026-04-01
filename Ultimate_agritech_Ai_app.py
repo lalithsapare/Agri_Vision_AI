@@ -1,12 +1,14 @@
-import os
-import time
-from typing import Dict, List, Tuple
+try:
+    from dotenv import load_dotenv
+except ModuleNotFoundError:
+    def load_dotenv(*args, **kwargs):
+        return False
 
+from typing import Dict, List, Tuple
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
 from PIL import Image
-from dotenv import load_dotenv
 
 load_dotenv()
 
@@ -573,7 +575,15 @@ elif page == "NDVI & Stress":
         fig.add_hline(y=0.7, line_dash="dash", line_color="green", annotation_text="Excellent")
         fig.add_hline(y=0.5, line_dash="dash", line_color="orange", annotation_text="Monitor")
         fig.add_hline(y=0.3, line_dash="dash", line_color="red", annotation_text="Critical")
-        fig.add_trace(go.Scatter(x=[1], y=[ndvi], mode="markers+text", marker=dict(size=20, color="blue"), text=[f"NDVI: {ndvi:.3f}"], textposition="middle center", name="Your Field"))
+        fig.add_trace(go.Scatter(
+            x=[1],
+            y=[ndvi],
+            mode="markers+text",
+            marker=dict(size=20, color="blue"),
+            text=[f"NDVI: {ndvi:.3f}"],
+            textposition="middle center",
+            name="Your Field"
+        ))
         fig.update_layout(title=f"NDVI Health Score - {location}", height=400)
         st.plotly_chart(fig, use_container_width=True)
         st.markdown(f"**Stress Level:** {stress} ({conf}% confidence)")
