@@ -1,796 +1,335 @@
-try:
-    from dotenv import load_dotenv
-except ModuleNotFoundError:
-    def load_dotenv(*args, **kwargs):
-        return False
-
-from typing import Dict, List, Tuple
-import numpy as np
 import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
-from PIL import Image
 
-load_dotenv()
+st.set_page_config(page_title="Telangana AgriTech Assistant", page_icon="🌾", layout="wide")
 
-st.set_page_config(
-    page_title="AgriTech Smart Assistant Pro+ Telangana Edition",
-    page_icon="🌾",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
-
-st.markdown("""
-<style>
-.main {background: linear-gradient(135deg, #0b1220 0%, #101827 100%);}
-.block-container {padding-top: 1rem; padding-bottom: 1rem;}
-[data-testid="stSidebar"] {background: linear-gradient(180deg, #14532d 0%, #1f7a47 100%);}
-[data-testid="stSidebar"] * {color: white !important;}
-.hero-box {background: linear-gradient(120deg, #14532d, #22a063, #34d399); color: white; padding: 1.5rem 1.3rem; border-radius: 22px; box-shadow: 0 12px 34px rgba(16, 185, 129, 0.22); margin-bottom: 1rem;}
-.decision-card {background: linear-gradient(135deg, #f0fff4, #dcfce7); border-left: 8px solid #16a34a; color: #123524; border-radius: 18px; padding: 18px; box-shadow: 0 6px 18px rgba(0,0,0,0.08); margin-top: 12px;}
-.report-card {background: linear-gradient(135deg, #ffffff, #f0fdf4); border-radius: 20px; padding: 20px; border: 1px solid #d1fae5; box-shadow: 0 10px 26px rgba(0,0,0,0.08); margin-top: 12px; color: #123524;}
-.metric-card {background: white; border-radius: 18px; padding: 15px; text-align: center; border: 1px solid #e5f1e8; box-shadow: 0 5px 18px rgba(0,0,0,0.06);}
-.section-title {background: linear-gradient(90deg, #ecfdf5, #f0fdf4); padding: 10px 14px; border-radius: 12px; border: 1px solid #d1fae5; color: #166534; font-weight: 700; margin: 0.6rem 0 1rem 0;}
-.region-chip {display: inline-block; padding: 0.35rem 0.8rem; border-radius: 999px; background: #e8fff0; color: #166534; border: 1px solid #b7e4c7; margin-right: 8px; margin-bottom: 8px; font-size: 0.9rem; font-weight: 600;}
-.small-muted {color: #4d6758; font-size: 14px;}
-.risk-high {background: #fef2f2; color: #991b1b; border-left: 7px solid #ef4444; padding: 12px 14px; border-radius: 14px;}
-.risk-medium {background: #fffbeb; color: #92400e; border-left: 7px solid #f59e0b; padding: 12px 14px; border-radius: 14px;}
-.risk-low {background: #f0fdf4; color: #166534; border-left: 7px solid #22c55e; padding: 12px 14px; border-radius: 14px;}
-</style>
-""", unsafe_allow_html=True)
-
-COLOR = {"green": "#16a34a", "amber": "#f59e0b", "red": "#ef4444", "blue": "#3b82f6", "teal": "#14b8a6", "purple": "#8b5cf6"}
-
-TELANGANA_CROP_INFO = {
-    "Cotton": {"season": "Kharif", "water": "Moderate", "note": "Major commercial crop in northern and central Telangana."},
-    "Maize": {"season": "Kharif/Rabi", "water": "Moderate", "note": "Important in irrigated and semi-irrigated belts."},
-    "Paddy": {"season": "Kharif/Rabi", "water": "High", "note": "Common in canal and borewell supported areas."},
-    "Red Gram": {"season": "Kharif", "water": "Low to Moderate", "note": "Useful in rainfed Telangana farming systems."},
-    "Soybean": {"season": "Kharif", "water": "Moderate", "note": "Suitable in selected rainfall zones and medium soils."},
-    "Turmeric": {"season": "Kharif", "water": "High", "note": "High-value crop in some Telangana districts."},
-    "Jowar": {"season": "Kharif/Rabi", "water": "Low", "note": "Good drought-tolerant option in dry belts."},
-    "Bengal Gram": {"season": "Rabi", "water": "Low", "note": "Popular pulse crop in post-rainy season."},
-    "Groundnut": {"season": "Rabi", "water": "Moderate", "note": "Works in well-drained soils."},
-    "Sesame": {"season": "Rabi", "water": "Low", "note": "Useful for short-duration dryland planning."},
-    "Sunflower": {"season": "Rabi", "water": "Moderate", "note": "Suitable with controlled irrigation."},
-    "Black Gram": {"season": "Rabi", "water": "Low to Moderate", "note": "Good pulse option after monsoon."},
+TELANGANA_CROPS = {
+    "Kharif": [
+        "Cotton", "Maize", "Paddy", "Red Gram", "Soybean", "Green Gram",
+        "Black Gram", "Jowar", "Bajra", "Sesame", "Groundnut", "Turmeric", "Chilli"
+    ],
+    "Rabi": [
+        "Paddy", "Maize", "Groundnut", "Bengal Gram", "Black Gram", "Sesame",
+        "Jowar", "Sunflower", "Safflower", "Horse Gram", "Castor"
+    ],
+    "Summer": [
+        "Paddy", "Maize", "Groundnut", "Sesame", "Sunflower", "Vegetables", "Fodder Maize"
+    ]
 }
 
-HARVEST_INFO = {
-    "Cotton": {"days": 165, "stage": "Picking stage starts after boll opening", "water": "Moderate", "labor": "Medium to High", "market": "Check kapas rate before harvest"},
-    "Maize": {"days": 115, "stage": "Harvest at black layer maturity", "water": "Moderate", "labor": "Medium", "market": "Dry cobs before storage"},
-    "Paddy": {"days": 135, "stage": "Harvest when 80 to 85 percent grains mature", "water": "High", "labor": "High", "market": "Plan drying yard and transport"},
-    "Red Gram": {"days": 150, "stage": "Harvest when pods turn brown and dry", "water": "Low to Moderate", "labor": "Medium", "market": "Avoid shattering losses"},
-    "Soybean": {"days": 105, "stage": "Harvest when leaves drop and pods dry", "water": "Moderate", "labor": "Medium", "market": "Dry seed well before bagging"},
-    "Turmeric": {"days": 240, "stage": "Harvest when leaves yellow and dry", "water": "High", "labor": "High", "market": "Curing and polishing needed"},
-    "Jowar": {"days": 115, "stage": "Harvest when grains become hard", "water": "Low", "labor": "Medium", "market": "Good option for dry belts"},
-    "Bengal Gram": {"days": 110, "stage": "Harvest when plants become dry", "water": "Low", "labor": "Low to Medium", "market": "Avoid excess moisture at harvest"},
-    "Groundnut": {"days": 115, "stage": "Harvest after inner shell darkening", "water": "Moderate", "labor": "Medium", "market": "Dry pods before storage"},
-    "Sesame": {"days": 95, "stage": "Harvest when lower capsules mature", "water": "Low", "labor": "Low", "market": "Tie bundles upright for drying"},
-    "Sunflower": {"days": 105, "stage": "Harvest when back of head turns yellow", "water": "Moderate", "labor": "Medium", "market": "Dry seed heads properly"},
-    "Black Gram": {"days": 85, "stage": "Harvest when most pods turn black", "water": "Low to Moderate", "labor": "Low to Medium", "market": "Do timely harvest to reduce shattering"},
+TELANGANA_DISTRICTS = [
+    "Adilabad", "Bhadradri Kothagudem", "Hanamkonda", "Hyderabad", "Jagtial", "Jangaon",
+    "Jayashankar Bhupalpally", "Jogulamba Gadwal", "Kamareddy", "Karimnagar", "Khammam",
+    "Komaram Bheem Asifabad", "Mahabubabad", "Mahabubnagar", "Mancherial", "Medak",
+    "Medchal-Malkajgiri", "Mulugu", "Nagarkurnool", "Nalgonda", "Narayanpet", "Nirmal",
+    "Nizamabad", "Peddapalli", "Rajanna Sircilla", "Rangareddy", "Sangareddy", "Siddipet",
+    "Suryapet", "Vikarabad", "Wanaparthy", "Warangal", "Yadadri Bhuvanagiri"
+]
+
+SOIL_TYPES = ["Red Sandy Loam", "Black Cotton Soil", "Alluvial Soil", "Lateritic Soil", "Clay Loam"]
+
+DEFAULTS = {
+    "Kharif": {"temperature": 29.0, "humidity": 78.0, "rainfall": 710.0, "soil_moisture": 61.0, "ph": 6.8, "nitrogen": 72, "phosphorus": 38, "potassium": 41},
+    "Rabi": {"temperature": 24.0, "humidity": 58.0, "rainfall": 95.0, "soil_moisture": 44.0, "ph": 7.0, "nitrogen": 55, "phosphorus": 30, "potassium": 35},
+    "Summer": {"temperature": 34.0, "humidity": 42.0, "rainfall": 35.0, "soil_moisture": 29.0, "ph": 7.1, "nitrogen": 48, "phosphorus": 26, "potassium": 32},
 }
 
-UI_TEXT = {
-    "English": {
-        "weather_title": "Weather Module",
-        "harvest_title": "Harvest Time & Farm Requirements",
-        "farmer_note": "Easy farmer-friendly guidance is active.",
-        "lang_note": "Language selected"
-    },
-    "Telugu": {
-        "weather_title": "వాతావరణ మాడ్యూల్",
-        "harvest_title": "పంట కోత సమయం మరియు అవసరాలు",
-        "farmer_note": "రైతులకు సులభంగా అర్థమయ్యే సూచనలు యాక్టివ్‌లో ఉన్నాయి.",
-        "lang_note": "ఎంచుకున్న భాష"
-    },
-    "Hindi": {
-        "weather_title": "मौसम मॉड्यूल",
-        "harvest_title": "कटाई समय और कृषि आवश्यकताएँ",
-        "farmer_note": "किसानों के लिए आसान मार्गदर्शन सक्रिय है।",
-        "lang_note": "चयनित भाषा"
-    }
+CROP_GUIDE = {
+    "Cotton": {"water": "Medium", "season": "Kharif", "soil": "Black Cotton Soil", "fert": "Balanced NPK with split nitrogen application"},
+    "Maize": {"water": "Medium", "season": "Kharif/Rabi", "soil": "Red Sandy Loam", "fert": "Nitrogen rich basal + top dressing"},
+    "Paddy": {"water": "High", "season": "Kharif/Rabi", "soil": "Clay Loam", "fert": "High nitrogen with zinc attention"},
+    "Red Gram": {"water": "Low-Medium", "season": "Kharif", "soil": "Red Sandy Loam", "fert": "Starter phosphorus, low nitrogen"},
+    "Soybean": {"water": "Medium", "season": "Kharif", "soil": "Alluvial Soil", "fert": "Rhizobium support + phosphorus"},
+    "Green Gram": {"water": "Low", "season": "Kharif", "soil": "Red Sandy Loam", "fert": "Light phosphorus and sulphur"},
+    "Black Gram": {"water": "Low", "season": "Kharif/Rabi", "soil": "Red Sandy Loam", "fert": "Low nitrogen, phosphorus support"},
+    "Jowar": {"water": "Low", "season": "Kharif/Rabi", "soil": "Black Cotton Soil", "fert": "Moderate NPK with micronutrient watch"},
+    "Bajra": {"water": "Low", "season": "Kharif", "soil": "Lateritic Soil", "fert": "Low input crop, moderate nitrogen"},
+    "Sesame": {"water": "Low", "season": "Kharif/Rabi/Summer", "soil": "Red Sandy Loam", "fert": "Sulphur and phosphorus support"},
+    "Groundnut": {"water": "Medium", "season": "Kharif/Rabi/Summer", "soil": "Red Sandy Loam", "fert": "Gypsum, calcium and phosphorus"},
+    "Turmeric": {"water": "High", "season": "Kharif", "soil": "Clay Loam", "fert": "Organic matter rich with potassium support"},
+    "Chilli": {"water": "Medium", "season": "Kharif", "soil": "Red Sandy Loam", "fert": "Potash and micronutrient support"},
+    "Bengal Gram": {"water": "Low", "season": "Rabi", "soil": "Black Cotton Soil", "fert": "Phosphorus dominant recommendation"},
+    "Sunflower": {"water": "Low-Medium", "season": "Rabi/Summer", "soil": "Alluvial Soil", "fert": "Sulphur and boron support"},
+    "Safflower": {"water": "Low", "season": "Rabi", "soil": "Black Cotton Soil", "fert": "Low irrigation, balanced phosphorus"},
+    "Horse Gram": {"water": "Low", "season": "Rabi", "soil": "Lateritic Soil", "fert": "Very low input, organic matter preferred"},
+    "Castor": {"water": "Low-Medium", "season": "Rabi", "soil": "Black Cotton Soil", "fert": "Moderate NPK with sulphur"},
+    "Vegetables": {"water": "Medium-High", "season": "Summer", "soil": "Clay Loam", "fert": "Crop-specific soluble nutrition"},
+    "Fodder Maize": {"water": "Medium", "season": "Summer", "soil": "Red Sandy Loam", "fert": "Nitrogen rich fodder nutrition"},
 }
 
-def tr(language: str, key: str) -> str:
-    return UI_TEXT.get(language, UI_TEXT["English"]).get(key, key)
 
-class AgritechModels:
-    def predict_crop_recommendation(self, features: List[float], location: str = "Telangana", season: str = "Kharif") -> Tuple[str, float, Dict[str, float]]:
-        region_crops = {
-            ("Andhra Pradesh", "Kharif"): ["Rice", "Maize", "Cotton", "Sugarcane", "Groundnut", "Banana", "Chilli", "Tomato"],
-            ("Andhra Pradesh", "Rabi"): ["Rice", "Maize", "Groundnut", "Black Gram", "Sunflower", "Chilli", "Bengal Gram", "Tomato"],
-            ("Telangana", "Kharif"): ["Cotton", "Maize", "Paddy", "Red Gram", "Soybean", "Turmeric", "Jowar", "Chilli"],
-            ("Telangana", "Rabi"): ["Maize", "Bengal Gram", "Groundnut", "Sesame", "Jowar", "Sunflower", "Paddy", "Black Gram"],
-        }
-        crops = region_crops.get((location, season), region_crops[("Telangana", "Kharif")])
-        feature_sum = sum(features)
-        scores = []
-        for crop in crops:
-            crop_bonus = 0
-            if location == "Telangana":
-                if crop == "Cotton":
-                    crop_bonus = 18 if season == "Kharif" else 6
-                elif crop == "Red Gram":
-                    crop_bonus = 16 if season == "Kharif" else 4
-                elif crop == "Maize":
-                    crop_bonus = 14
-                elif crop == "Bengal Gram":
-                    crop_bonus = 18 if season == "Rabi" else 2
-                elif crop == "Jowar":
-                    crop_bonus = 15
-                elif crop == "Turmeric":
-                    crop_bonus = 12 if season == "Kharif" else 1
-            score = ((feature_sum * 0.7) + crop_bonus + (len(crop) * 2.3)) % 100 + 30
-            scores.append(score)
-        probs = np.array(scores) / np.sum(scores)
-        prob_map = {crop: round(float(p * 100), 2) for crop, p in zip(crops, probs)}
-        best_crop = max(prob_map, key=prob_map.get)
-        return best_crop, prob_map[best_crop], prob_map
+def recommend_crop(season, soil_type, temperature, humidity, rainfall, ph, nitrogen, phosphorus, potassium):
+    crops = TELANGANA_CROPS.get(season, [])
+    scored = []
+    for crop in crops:
+        score = 50
+        guide = CROP_GUIDE.get(crop, {})
+        if guide.get("soil") == soil_type:
+            score += 18
+        if crop == "Cotton" and 24 <= temperature <= 32 and rainfall >= 500:
+            score += 25
+        if crop == "Paddy" and humidity >= 70 and rainfall >= 600:
+            score += 25
+        if crop == "Maize" and 20 <= temperature <= 32 and 400 <= rainfall <= 900:
+            score += 22
+        if crop == "Red Gram" and 22 <= temperature <= 34 and rainfall >= 450:
+            score += 22
+        if crop == "Groundnut" and 22 <= temperature <= 30 and 350 <= rainfall <= 700:
+            score += 20
+        if crop == "Bengal Gram" and season == "Rabi" and rainfall <= 150:
+            score += 24
+        if crop == "Sesame" and rainfall <= 500:
+            score += 18
+        if crop == "Jowar" and 24 <= temperature <= 35:
+            score += 18
+        if crop == "Turmeric" and humidity >= 75 and rainfall >= 800:
+            score += 20
+        if 6.0 <= ph <= 7.8:
+            score += 8
+        if nitrogen >= 50:
+            score += 5
+        if phosphorus >= 25:
+            score += 5
+        if potassium >= 25:
+            score += 5
+        scored.append((crop, score))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored[:5]
 
-    def predict_crop_yield(self, features: List[float], location: str = "Telangana") -> Tuple[float, float, Dict[str, float]]:
-        ph, temperature, rainfall, fertilizer, humidity, soil_moisture = features
-        regional_factor = 1.07 if location == "Telangana" else 1.0
-        components = {
-            "Temperature": temperature * 0.66,
-            "Rainfall": rainfall * 0.022,
-            "Fertilizer": fertilizer * 0.042,
-            "Humidity": humidity * 0.075,
-            "Soil Moisture": soil_moisture * 0.26,
-            "pH Penalty": -abs(ph - 6.7) * 2.2,
-        }
-        pred = round(max(sum(components.values()) * regional_factor, 0), 2)
-        return pred, 90.2, components
 
-    def predict_irrigation(self, features: List[float], location: str = "Telangana") -> Tuple[str, str, float, Dict[str, float]]:
-        soil_moisture, temperature, humidity, ph, rainfall = features
-        factors = {
-            "Soil Dryness": max(0, 100 - soil_moisture),
-            "Heat Pressure": max(0, temperature * 2.3),
-            "Humidity Buffer": max(0, 100 - humidity),
-            "Rain Support": rainfall,
-            "pH Balance": max(0, 100 - abs(ph - 6.8) * 20),
-        }
-        if location == "Telangana":
-            if rainfall > 155 or soil_moisture > 56:
-                return "Low", "Reduce irrigation and check drainage in Telangana field conditions", 91.5, factors
-            if soil_moisture < 32 and temperature > 31:
-                return "High", "Increase irrigation; use drip or split irrigation for Telangana dry belts", 91.5, factors
-            return "Moderate", "Maintain moderate irrigation with frequent soil checks", 91.5, factors
-        if rainfall > 180 or soil_moisture > 60:
-            return "Low", "Reduce irrigation", 90.0, factors
-        if soil_moisture < 30 and temperature > 30:
-            return "High", "Increase irrigation", 90.0, factors
-        return "Moderate", "Maintain moderate irrigation", 90.0, factors
+def estimate_yield(crop, area, rainfall, temperature, soil_moisture, nitrogen, phosphorus, potassium):
+    base = {
+        "Cotton": 18, "Maize": 32, "Paddy": 26, "Red Gram": 10, "Soybean": 14,
+        "Green Gram": 8, "Black Gram": 8, "Jowar": 14, "Bajra": 12, "Sesame": 6,
+        "Groundnut": 16, "Turmeric": 80, "Chilli": 22, "Bengal Gram": 10,
+        "Sunflower": 9, "Safflower": 7, "Horse Gram": 6, "Castor": 11,
+        "Vegetables": 95, "Fodder Maize": 140
+    }.get(crop, 12)
 
-    def predict_fertilizer(self, features: List[float], location: str = "Telangana", crop_name: str = "Cotton") -> Tuple[str, float, Dict[str, float]]:
-        N, P, K, temperature, humidity, moisture, soil_type, crop_type, ph, rainfall = features
-        levels = {"Nitrogen": N, "Phosphorus": P, "Potassium": K}
-        if location == "Telangana":
-            if crop_name == "Cotton":
-                if N < 60:
-                    return "Apply nitrogen in split doses for cotton; add foliar micronutrient spray", 89.0, levels
-                if K < 42:
-                    return "Apply potash to improve boll development and dry spell tolerance", 89.0, levels
-                return "Use balanced NPK with zinc or micronutrient support for cotton", 89.0, levels
-            if crop_name in ["Maize", "Paddy"]:
-                if N < 58:
-                    return "Apply nitrogen in 2 to 3 split doses", 88.8, levels
-                if P < 42:
-                    return "Apply basal phosphorus before or during sowing", 88.8, levels
-                return "Balanced NPK with field-stage based top dressing", 88.8, levels
-            if crop_name in ["Red Gram", "Bengal Gram", "Black Gram"]:
-                return "Use moderate fertilizer with phosphorus support; avoid excess nitrogen in pulses", 88.4, levels
-            if crop_name in ["Jowar", "Sesame"]:
-                return "Use light to moderate fertilizer with moisture-based application planning", 88.0, levels
-        if N < 50:
-            return "Apply nitrogen fertilizer", 87.0, levels
-        if P < 40:
-            return "Apply phosphorus fertilizer", 87.0, levels
-        if K < 38:
-            return "Apply potassium fertilizer", 87.0, levels
-        return "Balanced NPK fertilizer", 87.0, levels
+    weather_factor = 1 + ((rainfall - 300) / 2000) + ((soil_moisture - 40) / 300)
+    nutrient_factor = 1 + ((nitrogen + phosphorus + potassium) - 100) / 500
+    temp_penalty = 1 - abs(28 - temperature) / 60
+    final_per_acre = max(3, base * weather_factor * nutrient_factor * temp_penalty)
+    total = round(final_per_acre * area, 2)
+    return round(final_per_acre, 2), total
 
-    def predict_rainfall(self, features: List[float], location: str = "Telangana") -> Tuple[float, str, float, Dict[str, float]]:
-        temp, humidity, pressure, wind_speed = features
-        regional_boost = 3.0 if location == "Telangana" else 0.0
-        factors = {
-            "Humidity Impact": humidity * 0.7,
-            "Temperature Impact": -(temp * 0.22),
-            "Wind Impact": wind_speed * 0.45,
-            "Pressure Impact": (1015 - pressure) * 1.1,
-            "Regional Boost": regional_boost,
-        }
-        rain = max(round(sum(factors.values()), 2), 0)
-        if rain > 60:
-            status = "High Rainfall"
-        elif rain > 25:
-            status = "Moderate Rainfall"
-        else:
-            status = "Low Rainfall"
-        return rain, status, 87.2, factors
 
-    def predict_temperature(self, features: List[float], location: str = "Telangana") -> Tuple[float, float, Dict[str, float]]:
-        humidity, rainfall, soil_moisture, season_code = features
-        base = 30.0 if location == "Telangana" else 28.0
-        seasonal_shift = 2.5 if season_code == 1 else -3.0
-        temp = round(base + seasonal_shift + (humidity * 0.02) - (rainfall * 0.01) - (soil_moisture * 0.015), 2)
-        factors = {
-            "Base Climate": base,
-            "Season Effect": seasonal_shift,
-            "Humidity Effect": humidity * 0.02,
-            "Rainfall Cooling": -(rainfall * 0.01),
-            "Soil Moisture Cooling": -(soil_moisture * 0.015),
-        }
-        return temp, 86.7, factors
-
-    def predict_weather_class(self, features: List[float], location: str = "Telangana") -> Tuple[str, float, Dict[str, float]]:
-        temperature, humidity, rainfall, soil_moisture = features
-        factors = {
-            "Temperature": temperature,
-            "Humidity": humidity,
-            "Rainfall": rainfall,
-            "Soil Moisture": soil_moisture,
-        }
-        if rainfall > 150 and humidity > 70:
-            return "Wet & Humid", 88.0, factors
-        if temperature > 32 and soil_moisture < 35:
-            return "Hot & Dry", 88.0, factors
-        return "Balanced", 88.0, factors
-
-    def predict_npk(self, features: List[float]) -> Tuple[Dict[str, float], float]:
-        ph, ec, organic_carbon, moisture, temp, rainfall = features
-        n = round((organic_carbon * 42) + (moisture * 0.8), 2)
-        p = round((ec * 21) + (ph * 3.2), 2)
-        k = round((rainfall * 0.07) + (temp * 0.60), 2)
-        return {"Nitrogen": n, "Phosphorus": p, "Potassium": k}, 88.4
-
-    def calculate_ndvi(self, red: float, nir: float) -> float:
-        return round((nir - red) / (nir + red + 1e-8), 4)
-
-    def predict_crop_stress(self, features: List[float], location: str = "Telangana") -> Tuple[str, float, Dict[str, float]]:
-        ndvi, temp, soil_moisture, humidity = features
-        temp_threshold = 35 if location == "Telangana" else 36
-        factors = {
-            "Vegetation Health": ndvi * 100,
-            "Temperature Stress": max(0, (temp - 25) * 8),
-            "Moisture Security": soil_moisture,
-            "Humidity Support": humidity,
-        }
-        if ndvi < 0.35 or soil_moisture < 28 or temp > temp_threshold:
-            return "High", 80.5, factors
-        if ndvi < 0.50:
-            return "Moderate", 86.5, factors
-        return "Low", 92.8, factors
-
-    def predict_disease(self, image_array: np.ndarray) -> Tuple[str, float, Dict[str, float]]:
-        labels = ["Healthy", "Leaf Blight", "Rust", "Leaf Spot", "Powdery Mildew"]
-        raw = np.array([28, 18, 15, 20, 19], dtype=float) + (int(np.mean(image_array)) % 5)
-        probs = raw / raw.sum() * 100
-        prob_map = {k: round(float(v), 2) for k, v in zip(labels, probs)}
-        best = max(prob_map, key=prob_map.get)
-        return best, prob_map[best], prob_map
-
-    def predict_pest(self, image_array: np.ndarray) -> Tuple[str, float, Dict[str, float]]:
-        labels = ["No Major Pest", "Aphids", "Whitefly", "Stem Borer", "Leaf Miner"]
-        raw = np.array([31, 17, 20, 16, 16], dtype=float) + (int(np.std(image_array)) % 6)
-        probs = raw / raw.sum() * 100
-        prob_map = {k: round(float(v), 2) for k, v in zip(labels, probs)}
-        best = max(prob_map, key=prob_map.get)
-        return best, prob_map[best], prob_map
-
-    def predict_nutrient_deficiency(self, image_array: np.ndarray) -> Tuple[str, float, Dict[str, float]]:
-        labels = ["No Visible Deficiency", "Nitrogen Deficiency", "Potassium Deficiency", "Phosphorus Deficiency", "Zinc Deficiency"]
-        raw = np.array([34, 18, 16, 14, 18], dtype=float) + (int(np.median(image_array)) % 5)
-        probs = raw / raw.sum() * 100
-        prob_map = {k: round(float(v), 2) for k, v in zip(labels, probs)}
-        best = max(prob_map, key=prob_map.get)
-        return best, prob_map[best], prob_map
-
-agrimodels = AgritechModels()
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
-if "latest_final_output" not in st.session_state:
-    st.session_state.latest_final_output = None
-if "last_disease_output" not in st.session_state:
-    st.session_state.last_disease_output = {"disease": "Healthy", "confidence": 0.0}
-if "last_pest_output" not in st.session_state:
-    st.session_state.last_pest_output = {"pest": "No Major Pest", "confidence": 0.0}
-if "last_deficiency_output" not in st.session_state:
-    st.session_state.last_deficiency_output = {"deficiency": "No Visible Deficiency", "confidence": 0.0}
-
-def num_input(label: str, value: float = 0.0) -> float:
-    return st.number_input(label, value=float(value), step=0.1)
-
-def process_image(uploaded_file):
-    image = Image.open(uploaded_file).convert("RGB")
-    image = image.resize((224, 224))
-    arr = np.array(image, dtype=np.float32)
-    return image, arr
-
-def get_simulation_defaults(location: str, season: str) -> Dict[str, float]:
-    data = {
-        ("Andhra Pradesh", "Kharif"): {"N": 90, "P": 42, "K": 43, "temperature": 28, "humidity": 82, "ph": 6.5, "rainfall": 220, "soil_moisture": 48, "fertilizer": 110, "ec": 1.2, "organic_carbon": 0.82},
-        ("Andhra Pradesh", "Rabi"): {"N": 75, "P": 38, "K": 35, "temperature": 23, "humidity": 68, "ph": 6.8, "rainfall": 90, "soil_moisture": 36, "fertilizer": 95, "ec": 1.0, "organic_carbon": 0.70},
-        ("Telangana", "Kharif"): {"N": 82, "P": 40, "K": 41, "temperature": 30, "humidity": 74, "ph": 6.7, "rainfall": 165, "soil_moisture": 40, "fertilizer": 102, "ec": 1.15, "organic_carbon": 0.74},
-        ("Telangana", "Rabi"): {"N": 70, "P": 36, "K": 34, "temperature": 25, "humidity": 62, "ph": 7.0, "rainfall": 55, "soil_moisture": 30, "fertilizer": 88, "ec": 0.95, "organic_carbon": 0.66},
-    }
-    return data.get((location, season), data[("Telangana", "Kharif")])
-
-def get_region_note(location: str, season: str) -> str:
-    notes = {
-        ("Andhra Pradesh", "Kharif"): "Best suited for paddy, chilli, banana, and humid-season disease monitoring.",
-        ("Andhra Pradesh", "Rabi"): "Good for maize, pulses, sunflower, and controlled irrigation planning.",
-        ("Telangana", "Kharif"): "Optimized for cotton, maize, red gram, soybean, turmeric, and rainfed crop planning.",
-        ("Telangana", "Rabi"): "Optimized for bengal gram, groundnut, sesame, jowar, black gram, and dry-season water management.",
-    }
-    return notes.get((location, season), "Regional optimization active.")
-
-def compute_risk_level(disease: str, ndvi: float) -> str:
-    if disease.lower() != "healthy":
-        return "HIGH"
-    if ndvi < 0.5:
-        return "MEDIUM"
-    return "LOW"
-
-def get_risk_class(risk: str) -> str:
-    return "risk-high" if risk == "HIGH" else "risk-medium" if risk == "MEDIUM" else "risk-low"
-
-def build_action_list(irrigation_action: str, fertilizer_action: str, disease: str, weather_status: str, stress_level: str, pest: str = "No Major Pest", deficiency: str = "No Visible Deficiency") -> List[str]:
-    actions = [irrigation_action, fertilizer_action]
-    if disease.lower() != "healthy":
-        actions.append(f"Apply suitable disease management for {disease}")
-    if pest.lower() != "no major pest":
-        actions.append(f"Start integrated pest management for {pest}")
-    if deficiency.lower() != "no visible deficiency":
-        actions.append(f"Correct nutrient issue: {deficiency}")
-    if weather_status == "High Rainfall":
-        actions.append("Reduce irrigation and improve field drainage")
-    if stress_level == "High":
-        actions.append("Inspect crop immediately for heat or moisture stress")
-    final_actions = []
-    for action in actions:
-        if action not in final_actions:
-            final_actions.append(action)
-    return final_actions[:6]
-
-def get_harvest_time(crop_name: str, season: str, location: str) -> Dict[str, object]:
-    info = HARVEST_INFO.get(crop_name, {"days": 120, "stage": "Harvest at maturity", "water": "Moderate", "labor": "Medium", "market": "Check local market demand"})
-    season_adjust = 5 if location == "Telangana" and season == "Rabi" else 0
-    total_days = info["days"] + season_adjust
-    return {
-        "days": total_days,
-        "stage": info["stage"],
-        "water": info["water"],
-        "labor": info["labor"],
-        "market": info["market"],
-    }
-
-def get_farmer_requirements(crop_name: str, irrigation: str, weather_type: str) -> Dict[str, str]:
-    base_tools = "Seeds, soil test, sprayer, fertilizer, labor planning"
-    if crop_name in ["Paddy", "Turmeric"]:
-        base_tools += ", strong water source"
-    if irrigation == "High":
-        irrigation_need = "Keep motor, drip or pipe system ready"
-    elif irrigation == "Moderate":
-        irrigation_need = "Use planned interval irrigation"
+def irrigation_advice(crop, soil_moisture, temperature, rainfall):
+    if soil_moisture < 30 or (temperature > 34 and rainfall < 50):
+        status = "Immediate irrigation needed"
+        advice = "Use drip or sprinkler if available; irrigate in evening or early morning to reduce evaporation loss."
+    elif soil_moisture < 45:
+        status = "Irrigation needed in 1-2 days"
+        advice = "Plan light irrigation soon; avoid water stress during flowering and pod or boll formation."
     else:
-        irrigation_need = "Minimal irrigation; monitor field moisture"
-    if weather_type == "Wet & Humid":
-        weather_task = "Focus on drainage, disease scouting, and spray timing"
-    elif weather_type == "Hot & Dry":
-        weather_task = "Use mulch, frequent moisture checks, and heat protection"
+        status = "Soil moisture currently acceptable"
+        advice = "Monitor field moisture and avoid over-irrigation, especially in black soils and lowland zones."
+    crop_note = CROP_GUIDE.get(crop, {}).get("water", "Medium")
+    return status, advice, crop_note
+
+
+def fertilizer_advice(crop, nitrogen, phosphorus, potassium):
+    low = []
+    if nitrogen < 50:
+        low.append("Nitrogen")
+    if phosphorus < 25:
+        low.append("Phosphorus")
+    if potassium < 25:
+        low.append("Potassium")
+
+    if not low:
+        return f"NPK status looks acceptable for {crop}. Focus on split doses, micronutrients, and soil-test-based application."
+
+    crop_specific = CROP_GUIDE.get(crop, {}).get("fert", "Balanced fertilization recommended")
+    return f"Low nutrients detected: {', '.join(low)}. For {crop}, recommend: {crop_specific}."
+
+
+def soil_health_status(ph, nitrogen, phosphorus, potassium):
+    msgs = []
+    if ph < 6.0:
+        msgs.append("Soil is slightly acidic; liming may help in some fields.")
+    elif ph > 8.0:
+        msgs.append("Soil is alkaline; gypsum and organic matter may help improve nutrient availability.")
     else:
-        weather_task = "Normal field monitoring is enough"
-    return {
-        "Tools": base_tools,
-        "Irrigation Setup": irrigation_need,
-        "Weather Handling": weather_task,
-        "Farmer Tip": "Follow simple field observations every 2 to 3 days"
-    }
+        msgs.append("Soil pH is in an acceptable range for many Telangana crops.")
 
-def generate_smart_report(data: Dict[str, object]) -> str:
-    risk_class = get_risk_class(data["risk"])
-    actions_html = "".join([f"<li>{a}</li>" for a in data["actions"]])
-    return f"""
-    <div class="report-card">
-        <h2>🌾 SMART FARM REPORT</h2>
-        <p><strong>Location:</strong> {data['location']} | <strong>Season:</strong> {data['season']}</p>
-        <p><strong>Crop:</strong> {data['crop']} ({data['crop_conf']}%)</p>
-        <p><strong>Weather:</strong> {data['weather']} ({data['weather_conf']}%) | <strong>Weather Type:</strong> {data['weather_class']} ({data['weather_class_conf']}%)</p>
-        <p><strong>Predicted Temperature:</strong> {data['predicted_temperature']} °C ({data['temperature_conf']}%)</p>
-        <p><strong>Harvest Time:</strong> {data['harvest_days']} days | <strong>Harvest Stage:</strong> {data['harvest_stage']}</p>
-        <p><strong>Farmer Requirement:</strong> {data['farmer_tip']}</p>
-        <p><strong>Disease:</strong> {data['disease']} ({data['disease_conf']}%)</p>
-        <p><strong>Pest:</strong> {data['pest']} ({data['pest_conf']}%)</p>
-        <p><strong>Nutrient Deficiency:</strong> {data['deficiency']} ({data['deficiency_conf']}%)</p>
-        <p><strong>NDVI:</strong> {data['ndvi']}</p>
-        <div class="{risk_class}" style="margin: 12px 0;"><strong>Risk:</strong> {data['risk']}</div>
-        <p><strong>Actions:</strong></p>
-        <ul>{actions_html}</ul>
-    </div>
-    """
+    avg = (nitrogen + phosphorus + potassium) / 3
+    if avg >= 50:
+        msgs.append("Macronutrient condition is fairly good.")
+    elif avg >= 30:
+        msgs.append("Macronutrient condition is moderate; improve with balanced fertilization and FYM.")
+    else:
+        msgs.append("Macronutrient condition is low; soil-test-based nutrient correction is needed.")
+    return " ".join(msgs)
 
-def generate_gpt_like_reply(user_text: str, final_output=None, location: str = "Telangana", season: str = "Kharif") -> Tuple[str, str]:
-    text = user_text.lower().strip()
-    crop = "Cotton"
-    irrigation = "Moderate"
-    weather = "Moderate Rainfall"
-    actions = ["Maintain field monitoring", "Use balanced fertilizer"]
-    stress = "Moderate"
-    ndvi = 0.52
-    disease = "Healthy"
-    pest = "No Major Pest"
-    deficiency = "No Visible Deficiency"
-    risk = "LOW"
-    if final_output:
-        crop = final_output.get("crop", crop)
-        irrigation = final_output.get("irrigation", irrigation)
-        weather = final_output.get("weather", weather)
-        actions = final_output.get("actions", actions)
-        stress = final_output.get("stress", stress)
-        ndvi = final_output.get("ndvi", ndvi)
-        disease = final_output.get("disease", disease)
-        pest = final_output.get("pest", pest)
-        deficiency = final_output.get("deficiency", deficiency)
-        risk = final_output.get("risk", risk)
-    if "what should i do" in text or "what i do" in text:
-        return (
-            f"### 🤖 Smart Advice\n- Crop: {crop}\n- Risk: {risk}\n- Advice: {actions[0]}\n- Next Step: {actions[1] if len(actions) > 1 else actions[0]}\n- Reason: Weather is {weather}, stress is {stress}, disease is {disease}, pest is {pest}, deficiency is {deficiency}, NDVI is {ndvi}.",
-            f"### 📌 Why?\n- Location: {location}\n- Season: {season}\n- This advice combines crop, weather, disease, pest, nutrient deficiency, irrigation, and fertilizer signals."
+
+def ndvi_status(value):
+    if value >= 0.70:
+        return "Healthy crop canopy", "Vegetation vigor is strong and crop stress appears low."
+    if value >= 0.45:
+        return "Moderate crop vigor", "Field is acceptable but should be checked for moisture, nutrient, or pest pressure."
+    return "Low vegetation vigor", "Crop stress risk is high; inspect water, pests, disease, and nutrient deficiency immediately."
+
+
+def build_agritech_reply(question, district, season, crop, soil_type, temp, humidity, rainfall, soil_moisture, ph, n, p, k, ndvi):
+    q = question.lower().strip()
+    ndvi_label, ndvi_note = ndvi_status(ndvi)
+    irrig_status, irrig_note, water_need = irrigation_advice(crop, soil_moisture, temp, rainfall)
+    fert_note = fertilizer_advice(crop, n, p, k)
+    soil_note = soil_health_status(ph, n, p, k)
+
+    intro = f"🌾 Artificial AgriTech Assistant: Telangana field guidance for {district}, {season} season, focused on {crop}."
+    context = f"Current field context: temperature {temp}°C, humidity {humidity}%, rainfall {rainfall} mm, soil moisture {soil_moisture}%, pH {ph}, NPK {n}/{p}/{k}, NDVI {ndvi:.2f} ({ndvi_label})."
+
+    if any(word in q for word in ["crop", "which crop", "recommend"]):
+        top = recommend_crop(season, soil_type, temp, humidity, rainfall, ph, n, p, k)[:3]
+        crop_line = ", ".join([f"{name} ({score} score)" for name, score in top])
+        return f"{intro}\n\n{context}\n\nBest Telangana crop options now: {crop_line}. Soil type {soil_type} and season pattern are strongly supporting these choices."
+
+    if any(word in q for word in ["water", "irrigation", "drip", "moisture"]):
+        return f"{intro}\n\n{context}\n\nIrrigation decision: {irrig_status}. {irrig_note} Crop water need for {crop} is {water_need}."
+
+    if any(word in q for word in ["fertilizer", "fertiliser", "npk", "urea", "dap", "potash"]):
+        return f"{intro}\n\n{context}\n\nFertilizer advisory: {fert_note} Soil note: {soil_note}"
+
+    if any(word in q for word in ["yield", "production", "output"]):
+        per_acre, total = estimate_yield(crop, 1.0, rainfall, temp, soil_moisture, n, p, k)
+        return f"{intro}\n\n{context}\n\nEstimated yield for {crop}: about {per_acre} units per acre under current conditions. Yield may reduce if stress continues, so follow irrigation and nutrient corrections quickly."
+
+    if any(word in q for word in ["disease", "pest", "stress", "leaf", "yellow"]):
+        return f"{intro}\n\n{context}\n\nStress interpretation: {ndvi_note} Also inspect leaves, stem base, and root zone for pests, sucking insects, wilt, or nutrient deficiency. Start with field scouting and remove severely affected plants where necessary."
+
+    return f"{intro}\n\n{context}\n\nAgronomic advisory: {irrig_status}. {fert_note} {soil_note} NDVI note: {ndvi_note} For Telangana farming, take decisions crop stage wise and prefer soil-test-based correction instead of blanket application."
+
+
+def draw_gauge(value, title, min_v, max_v, color):
+    fig = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=value,
+            title={"text": title},
+            gauge={
+                "axis": {"range": [min_v, max_v]},
+                "bar": {"color": color},
+                "bgcolor": "white"
+            }
         )
-    return (
-        f"### 🤖 Smart Agri Assistant\n- Current region: {location}\n- Current season: {season}\n- Ask about irrigation, disease, pest, fertilizer, NDVI, deficiency, or crop actions.",
-        "### 📌 Assistant Note\n- Run Smart Advisor to generate the full report."
     )
-
-def plot_gauge(title: str, value: float, min_val: float, max_val: float, good_range: Tuple[float, float], color: str):
-    fig = go.Figure(go.Indicator(mode="gauge+number", value=value, title={'text': title}, gauge={'axis': {'range': [min_val, max_val]}, 'bar': {'color': color}, 'steps': [{'range': [min_val, good_range[0]], 'color': '#fee2e2'}, {'range': [good_range[0], good_range[1]], 'color': '#dcfce7'}, {'range': [good_range[1], max_val], 'color': '#fef3c7'}]}))
-    fig.update_layout(height=280, margin=dict(l=20, r=20, t=50, b=20), paper_bgcolor='white')
+    fig.update_layout(height=260, margin=dict(l=20, r=20, t=50, b=20))
     return fig
 
-def plot_bar_dict(data: Dict[str, float], title: str):
-    x = list(data.keys())
-    y = list(data.values())
-    fig = go.Figure(go.Bar(x=x, y=y, marker=dict(color=y, colorscale='Viridis'), text=[f"{v:.2f}" for v in y], textposition='outside'))
-    fig.update_layout(title=title, template='plotly_white', height=400, xaxis_title="Factors", yaxis_title="Value")
-    return fig
 
-def plot_radar(data: Dict[str, float], title: str, fillcolor: str = 'rgba(34,197,94,0.25)'):
-    labels = list(data.keys())
-    vals = list(data.values())
-    fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(r=vals + [vals[0]], theta=labels + [labels[0]], fill='toself', fillcolor=fillcolor, line=dict(color=COLOR['green'], width=3), name=title))
-    fig.update_layout(title=title, polar=dict(radialaxis=dict(visible=True)), template='plotly_white', height=430)
-    return fig
+def main():
+    st.title("🌾 Telangana Artificial AgriTech Assistant")
+    st.caption("Region-focused farmer assistant for Telangana crops, irrigation, soil, NPK, NDVI, and advisory support.")
 
-def plot_donut(prob_map: Dict[str, float], title: str):
-    fig = go.Figure(go.Pie(labels=list(prob_map.keys()), values=list(prob_map.values()), hole=0.52, textinfo='label+percent'))
-    fig.update_layout(title=title, template='plotly_white', height=420)
-    return fig
+    with st.sidebar:
+        st.header("Field Setup")
+        district = st.selectbox("District", TELANGANA_DISTRICTS)
+        season = st.selectbox("Season", list(TELANGANA_CROPS.keys()))
+        defaults = DEFAULTS[season]
+        soil_type = st.selectbox("Soil Type", SOIL_TYPES)
+        crop = st.selectbox("Current Crop / Target Crop", TELANGANA_CROPS[season])
+        area = st.number_input("Area (acres)", 0.5, 100.0, 2.0, 0.5)
+        temperature = st.slider("Temperature (°C)", 10.0, 45.0, float(defaults["temperature"]), 0.5)
+        humidity = st.slider("Humidity (%)", 10.0, 100.0, float(defaults["humidity"]), 1.0)
+        rainfall = st.slider("Rainfall (mm)", 0.0, 1200.0, float(defaults["rainfall"]), 5.0)
+        soil_moisture = st.slider("Soil Moisture (%)", 5.0, 100.0, float(defaults["soil_moisture"]), 1.0)
+        ph = st.slider("Soil pH", 4.0, 9.5, float(defaults["ph"]), 0.1)
+        nitrogen = st.slider("Nitrogen (N)", 0, 140, int(defaults["nitrogen"]), 1)
+        phosphorus = st.slider("Phosphorus (P)", 0, 120, int(defaults["phosphorus"]), 1)
+        potassium = st.slider("Potassium (K)", 0, 140, int(defaults["potassium"]), 1)
+        ndvi = st.slider("NDVI", 0.0, 1.0, 0.62, 0.01)
 
-def plot_line_forecast(base_value: float, title: str, ytitle: str):
-    days = ["Day 1", "Day 2", "Day 3", "Day 4", "Day 5", "Day 6", "Day 7"]
-    vals = [round(base_value * (0.96 + i * 0.015), 2) for i in range(7)]
-    fig = go.Figure(go.Scatter(x=days, y=vals, mode='lines+markers', line=dict(color=COLOR['blue'], width=3), fill='tozeroy'))
-    fig.update_layout(title=title, template='plotly_white', height=380, xaxis_title='Timeline', yaxis_title=ytitle)
-    return fig
+    tabs = st.tabs([
+        "Dashboard", "Crop Recommendation", "Yield", "Irrigation",
+        "Fertilizer", "Soil & NPK", "NDVI", "Farmer Chat"
+    ])
 
-def plot_nutrient_comparison(levels: Dict[str, float], ideal: Dict[str, float], title: str):
-    categories = list(levels.keys())
-    current = [levels[k] for k in categories]
-    target = [ideal[k] for k in categories]
-    fig = go.Figure()
-    fig.add_trace(go.Bar(name='Current', x=categories, y=current, marker_color=[COLOR['green'], COLOR['blue'], COLOR['amber']]))
-    fig.add_trace(go.Bar(name='Target', x=categories, y=target, marker_color='#cbd5e1'))
-    fig.update_layout(barmode='group', template='plotly_white', title=title, height=400)
-    return fig
+    with tabs[0]:
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("District", district)
+        c2.metric("Season", season)
+        c3.metric("Crop", crop)
+        c4.metric("Area", f"{area} acres")
 
-st.sidebar.title("🌿 AgriTech Menu")
-page = st.sidebar.radio("Choose Module", ["Home", "Smart Advisor", "Weather Module", "Crop Recommendation", "Crop Yield", "Irrigation", "Fertilizer", "Soil & NPK", "NDVI & Stress", "Image Models", "Farmer Chat Assistant"])
-language = st.sidebar.selectbox("Language", ["English", "Telugu", "Hindi"], index=0)
-st.sidebar.markdown("### 🌍 Regional Simulation Mode")
-location = st.sidebar.selectbox("Location", ["Telangana", "Andhra Pradesh"], index=0)
-season = st.sidebar.selectbox("Season", ["Kharif", "Rabi"], index=0)
-defaults = get_simulation_defaults(location, season)
-season_code = 1 if season == "Kharif" else 0
+        g1, g2, g3 = st.columns(3)
+        g1.plotly_chart(draw_gauge(soil_moisture, "Soil Moisture", 0, 100, "#0f766e"), use_container_width=True)
+        g2.plotly_chart(draw_gauge(humidity, "Humidity", 0, 100, "#2563eb"), use_container_width=True)
+        g3.plotly_chart(draw_gauge(ndvi, "NDVI", 0, 1, "#16a34a"), use_container_width=True)
 
-st.markdown(f"""<div class="hero-box"><h1>🌾 AgriTech Smart Assistant Pro+ Telangana Edition</h1><p>Advanced agriculture dashboard with stronger Telangana crop optimization, clear visual analytics, and easy-to-understand predictions.</p><p><strong>Location:</strong> {location} | <strong>Season:</strong> {season}</p><p><strong>{tr(language, "lang_note")}:</strong> {language}</p><p>{tr(language, "farmer_note")}</p></div>""", unsafe_allow_html=True)
+        st.info(f"Telangana crop list for {season}: {', '.join(TELANGANA_CROPS[season])}")
 
-if page == "Home":
-    st.markdown(f'<span class="region-chip">{location}</span><span class="region-chip">{season}</span><span class="region-chip">{get_region_note(location, season)}</span>', unsafe_allow_html=True)
-    if location == "Telangana":
-        st.markdown('<div class="section-title">Top Telangana Crops</div>', unsafe_allow_html=True)
-        crop_names = list(TELANGANA_CROP_INFO.keys())
-        crop_scores = [88, 86, 84, 82, 78, 76, 80, 81, 77, 72, 74, 75]
-        fig_crop = go.Figure(go.Bar(x=crop_names, y=crop_scores, marker=dict(color=crop_scores, colorscale="Greens")))
-        fig_crop.update_layout(title="Telangana Crop Suitability Snapshot", template="plotly_white", height=420)
-        st.plotly_chart(fig_crop, use_container_width=True)
-    fig = make_subplots(rows=1, cols=2, specs=[[{"type": "domain"}, {"type": "xy"}]])
-    fig.add_trace(go.Pie(labels=["Prediction", "Visualization", "Decision Support", "Chat Assistant"], values=[30, 25, 25, 20], hole=0.45), row=1, col=1)
-    fig.add_trace(go.Bar(x=["Crop", "Yield", "Irrigation", "Fertilizer", "NPK", "NDVI", "Disease", "Pest", "Deficiency", "Weather"], y=[93, 90, 91, 89, 88, 86, 86, 84, 83, 87], marker_color=[COLOR['green'], COLOR['blue'], COLOR['amber'], COLOR['teal'], COLOR['purple'], '#22c55e', '#f97316', '#ef4444', '#14b8a6', '#6366f1'], text=[93, 90, 91, 89, 88, 86, 86, 84, 83, 87], textposition='outside'), row=1, col=2)
-    fig.update_layout(height=450, template='plotly_white', title='System Capability Snapshot')
-    st.plotly_chart(fig, use_container_width=True)
+    with tabs[1]:
+        top_crops = recommend_crop(season, soil_type, temperature, humidity, rainfall, ph, nitrogen, phosphorus, potassium)
+        st.subheader("Top Telangana crop recommendations")
+        for idx, (name, score) in enumerate(top_crops, start=1):
+            guide = CROP_GUIDE.get(name, {})
+            st.write(
+                f"{idx}. {name} — score {score} | Soil: {guide.get('soil', '-')} | "
+                f"Water need: {guide.get('water', '-')} | Fertilizer note: {guide.get('fert', '-')}"
+            )
 
-elif page == "Smart Advisor":
-    st.subheader("🧠 Smart Farm Advisor")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        N = num_input("Nitrogen", defaults["N"])
-        P = num_input("Phosphorus", defaults["P"])
-        K = num_input("Potassium", defaults["K"])
-        ph = num_input("pH", defaults["ph"])
-    with c2:
-        temperature = num_input("Temperature", defaults["temperature"])
-        humidity = num_input("Humidity", defaults["humidity"])
-        rainfall = num_input("Rainfall", defaults["rainfall"])
-    with c3:
-        soil_moisture = num_input("Soil Moisture", defaults["soil_moisture"])
-        fertilizer_val = num_input("Fertilizer", defaults["fertilizer"])
-        red = num_input("Red Band", 0.30)
-        nir = num_input("NIR Band", 0.72)
-    if st.button("🚀 Generate Smart Farm Report", type="primary"):
-        crop, crop_conf, crop_map = agrimodels.predict_crop_recommendation([N, P, K, temperature, humidity, ph, rainfall], location, season)
-        irrigation, irrigation_action, irr_conf, irr_factors = agrimodels.predict_irrigation([soil_moisture, temperature, humidity, ph, rainfall], location)
-        rain_value, weather_status, weather_conf, rain_factors = agrimodels.predict_rainfall([temperature, humidity, 1012, 8], location)
-        predicted_temperature, temperature_conf, temperature_factors = agrimodels.predict_temperature([humidity, rainfall, soil_moisture, season_code], location)
-        weather_class, weather_class_conf, weather_class_factors = agrimodels.predict_weather_class([temperature, humidity, rainfall, soil_moisture], location)
-        fert_result, fert_conf, fert_levels = agrimodels.predict_fertilizer([N, P, K, temperature, humidity, soil_moisture, 1, 1, ph, rainfall], location, crop)
-        yield_pred, yield_conf, yield_components = agrimodels.predict_crop_yield([ph, temperature, rainfall, fertilizer_val, humidity, soil_moisture], location)
-        harvest_info = get_harvest_time(crop, season, location)
-        farmer_requirements = get_farmer_requirements(crop, irrigation, weather_class)
-        ndvi = agrimodels.calculate_ndvi(red, nir)
-        stress_level, stress_conf, stress_factors = agrimodels.predict_crop_stress([ndvi, temperature, soil_moisture, humidity], location)
-        disease_data = st.session_state.last_disease_output
-        pest_data = st.session_state.last_pest_output
-        deficiency_data = st.session_state.last_deficiency_output
-        disease = disease_data.get("disease", "Healthy")
-        disease_conf = disease_data.get("confidence", 0.0)
-        pest = pest_data.get("pest", "No Major Pest")
-        pest_conf = pest_data.get("confidence", 0.0)
-        deficiency = deficiency_data.get("deficiency", "No Visible Deficiency")
-        deficiency_conf = deficiency_data.get("confidence", 0.0)
-        risk = compute_risk_level(disease, ndvi)
-        actions = build_action_list(irrigation_action, fert_result, disease, weather_status, stress_level, pest, deficiency)
-        st.session_state.latest_final_output = {
-            "crop": crop,
-            "crop_conf": crop_conf,
-            "irrigation": irrigation,
-            "irrigation_conf": irr_conf,
-            "weather": weather_status,
-            "weather_conf": weather_conf,
-            "weather_class": weather_class,
-            "weather_class_conf": weather_class_conf,
-            "predicted_temperature": predicted_temperature,
-            "temperature_conf": temperature_conf,
-            "harvest_days": harvest_info["days"],
-            "harvest_stage": harvest_info["stage"],
-            "farmer_tip": farmer_requirements["Farmer Tip"],
-            "farmer_requirements": farmer_requirements,
-            "actions": actions,
-            "yield": yield_pred,
-            "yield_conf": yield_conf,
-            "ndvi": ndvi,
-            "stress": stress_level,
-            "stress_conf": stress_conf,
-            "disease": disease,
-            "disease_conf": disease_conf,
-            "pest": pest,
-            "pest_conf": pest_conf,
-            "deficiency": deficiency,
-            "deficiency_conf": deficiency_conf,
-            "risk": risk,
-            "location": location,
-            "season": season,
-            "fertilizer": fert_result,
-            "fertilizer_conf": fert_conf,
-        }
-        st.markdown(generate_smart_report(st.session_state.latest_final_output), unsafe_allow_html=True)
-        if location == "Telangana" and crop in TELANGANA_CROP_INFO:
-            info = TELANGANA_CROP_INFO[crop]
-            st.info(f"Telangana crop note: {crop} | Best season: {info['season']} | Water need: {info['water']} | {info['note']}")
-        m1, m2, m3, m4 = st.columns(4)
-        m1.metric("Crop Confidence", f"{crop_conf}%")
-        m2.metric("Disease Confidence", f"{disease_conf}%")
-        m3.metric("Yield Forecast", f"{yield_pred} t/ha")
-        m4.metric("NDVI Score", f"{ndvi}")
-        m5, m6, m7, m8 = st.columns(4)
-        m5.metric("Pest Confidence", f"{pest_conf}%")
-        m6.metric("Deficiency Confidence", f"{deficiency_conf}%")
-        m7.metric("Weather Type", weather_class)
-        m8.metric("Pred Temp", f"{predicted_temperature} °C")
-        st.markdown(f"### {tr(language, 'harvest_title')}")
-        r1, r2, r3, r4 = st.columns(4)
-        r1.metric("Harvest Days", harvest_info["days"])
-        r2.metric("Water Need", harvest_info["water"])
-        r3.metric("Labor Need", harvest_info["labor"])
-        r4.metric("Market Note", harvest_info["market"])
-        st.write("**Farmer Requirements**")
-        st.json(farmer_requirements)
-        tab1, tab2, tab3, tab4 = st.tabs(["🌾 Farming", "👁 Monitoring", "⛅ Weather", "🤖 Assistant"])
-        with tab1:
-            st.plotly_chart(plot_donut(crop_map, "Crop Recommendation Probability"), use_container_width=True)
-            st.plotly_chart(plot_bar_dict(yield_components, "Yield Contribution Analysis"), use_container_width=True)
-            st.bar_chart({"Nitrogen": [N], "Phosphorus": [P], "Potassium": [K]})
-        with tab2:
-            st.plotly_chart(plot_radar(stress_factors, "Crop Stress Radar"), use_container_width=True)
-            st.plotly_chart(plot_bar_dict(rain_factors, "Rainfall Driver Analysis"), use_container_width=True)
-            st.plotly_chart(plot_bar_dict(temperature_factors, "Temperature Driver Analysis"), use_container_width=True)
-            st.plotly_chart(plot_bar_dict(weather_class_factors, "Weather Classification Inputs"), use_container_width=True)
-            st.plotly_chart(plot_line_forecast(yield_pred, "7-Day Yield Trend Simulation", "Yield Index"), use_container_width=True)
-        with tab3:
-            st.plotly_chart(plot_line_forecast(rain_value, "7-Day Rainfall Forecast", "Rainfall (mm)"), use_container_width=True)
-            st.plotly_chart(plot_line_forecast(predicted_temperature, "7-Day Temperature Forecast", "Temperature (°C)"), use_container_width=True)
-            weather_mix = {"Humidity": humidity, "Rainfall": rainfall, "Soil Moisture": soil_moisture, "Temperature": temperature}
-            st.plotly_chart(plot_radar(weather_mix, "Weather Field Condition Radar", 'rgba(59,130,246,0.22)'), use_container_width=True)
-        with tab4:
-            answer, why = generate_gpt_like_reply("what should i do", st.session_state.latest_final_output, location, season)
-            st.markdown(answer)
-            st.markdown(why)
+    with tabs[2]:
+        per_acre, total_yield = estimate_yield(crop, area, rainfall, temperature, soil_moisture, nitrogen, phosphorus, potassium)
+        st.subheader("Yield estimation")
+        st.metric("Estimated yield per acre", per_acre)
+        st.metric("Estimated total yield", total_yield)
+        st.write("This is a rule-based Telangana crop estimate useful for demo, planning, and project portfolios.")
 
-elif page == "Weather Module":
-    st.subheader(f"⛅ {tr(language, 'weather_title')}")
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        temp = num_input("Temperature", defaults["temperature"])
-        humidity = num_input("Humidity", defaults["humidity"])
-    with c2:
-        pressure = num_input("Pressure", 1012)
-        wind = num_input("Wind Speed", 8)
-    with c3:
-        rainfall = num_input("Rainfall", defaults["rainfall"])
-        soil_moisture = num_input("Soil Moisture", defaults["soil_moisture"])
-    if st.button("Predict Weather & Harvest"):
-        rain_value, weather_status, weather_conf, rain_factors = agrimodels.predict_rainfall([temp, humidity, pressure, wind], location)
-        pred_temp, temp_conf, temp_factors = agrimodels.predict_temperature([humidity, rainfall, soil_moisture, season_code], location)
-        weather_class, class_conf, class_factors = agrimodels.predict_weather_class([temp, humidity, rainfall, soil_moisture], location)
-        crop, crop_conf, _ = agrimodels.predict_crop_recommendation([defaults["N"], defaults["P"], defaults["K"], temp, humidity, defaults["ph"], rainfall], location, season)
-        harvest = get_harvest_time(crop, season, location)
-        farmer_req = get_farmer_requirements(crop, "Moderate", weather_class)
-        st.success(f"Weather: {weather_status} ({weather_conf}% confidence) | Type: {weather_class} ({class_conf}% confidence)")
-        a1, a2, a3, a4 = st.columns(4)
-        a1.metric("Rainfall Forecast", f"{rain_value} mm")
-        a2.metric("Temperature Forecast", f"{pred_temp} °C")
-        a3.metric("Harvest Days", harvest["days"])
-        a4.metric("Suggested Crop", crop)
-        st.info(f"Harvest stage: {harvest['stage']}")
-        st.write("**Farmer-Friendly Requirements**")
-        st.json(farmer_req)
-        p1, p2 = st.columns(2)
-        with p1:
-            st.plotly_chart(plot_bar_dict(rain_factors, "Rainfall Factors"), use_container_width=True)
-            st.plotly_chart(plot_line_forecast(rain_value, "7-Day Rainfall Forecast", "Rainfall (mm)"), use_container_width=True)
-        with p2:
-            st.plotly_chart(plot_bar_dict(temp_factors, "Temperature Factors"), use_container_width=True)
-            st.plotly_chart(plot_line_forecast(pred_temp, "7-Day Temperature Forecast", "Temperature (°C)"), use_container_width=True)
-        weather_mix = {"Humidity": humidity, "Rainfall": rainfall, "Soil Moisture": soil_moisture, "Temperature": temp}
-        st.plotly_chart(plot_radar(weather_mix, "Weather Condition Radar", 'rgba(59,130,246,0.22)'), use_container_width=True)
+    with tabs[3]:
+        status, advice, water_need = irrigation_advice(crop, soil_moisture, temperature, rainfall)
+        st.subheader("Irrigation advisory")
+        st.success(status)
+        st.write(advice)
+        st.write(f"Crop water requirement category: {water_need}")
 
-elif page == "Crop Recommendation":
-    st.subheader("🌾 Telangana Crop Recommendation")
-    inputs = [num_input(f"Feature {i+1}", defaults["N"] + i * 2) for i in range(7)]
-    if st.button("Recommend Crop"):
-        crop, conf, crop_map = agrimodels.predict_crop_recommendation(inputs, location, season)
-        st.success(f"Recommended crop for {location} {season}: {crop} ({conf}% confidence)")
-        if location == "Telangana" and crop in TELANGANA_CROP_INFO:
-            info = TELANGANA_CROP_INFO[crop]
-            st.info(f"{crop} | Season: {info['season']} | Water: {info['water']} | {info['note']}")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.plotly_chart(plot_donut(crop_map, "Crop Recommendation Share"), use_container_width=True)
-        with c2:
-            st.plotly_chart(plot_bar_dict(crop_map, "Crop Score Comparison"), use_container_width=True)
+    with tabs[4]:
+        st.subheader("Fertilizer recommendation")
+        st.write(fertilizer_advice(crop, nitrogen, phosphorus, potassium))
+        st.write(f"Crop-specific Telangana note: {CROP_GUIDE.get(crop, {}).get('fert', 'Balanced fertilization recommended')}")
 
-elif page == "Crop Yield":
-    st.subheader("📈 Crop Yield Prediction")
-    yield_inputs = [num_input(lbl, val) for lbl, val in zip(["pH", "Temperature", "Rainfall", "Fertilizer", "Humidity", "Soil Moisture"], [defaults["ph"], defaults["temperature"], defaults["rainfall"], defaults["fertilizer"], defaults["humidity"], defaults["soil_moisture"]])]
-    if st.button("Predict Yield"):
-        yield_pred, conf, comps = agrimodels.predict_crop_yield(yield_inputs, location)
-        st.metric("Expected Yield", f"{yield_pred} tons/ha", delta=f"{conf}% confidence")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.plotly_chart(plot_gauge("Yield Gauge", yield_pred, 0, 120, (35, 80), COLOR['green']), use_container_width=True)
-        with c2:
-            st.plotly_chart(plot_bar_dict(comps, "Yield Factor Breakdown"), use_container_width=True)
-        st.plotly_chart(plot_line_forecast(yield_pred, "7-Day Yield Trend Simulation", "Yield Index"), use_container_width=True)
+    with tabs[5]:
+        st.subheader("Soil and nutrient health")
+        st.write(soil_health_status(ph, nitrogen, phosphorus, potassium))
+        st.write(f"Selected soil type: {soil_type}")
+        st.write(f"Current NPK values: {nitrogen}/{phosphorus}/{potassium}")
 
-elif page == "Irrigation":
-    st.subheader("💧 Irrigation Recommendation")
-    irr_inputs = [num_input(lbl, val) for lbl, val in zip(["Soil Moisture", "Temperature", "Humidity", "pH", "Rainfall"], [defaults["soil_moisture"], defaults["temperature"], defaults["humidity"], defaults["ph"], defaults["rainfall"]])]
-    if st.button("Predict Irrigation Need"):
-        level, action, conf, factors = agrimodels.predict_irrigation(irr_inputs, location)
-        st.success(f"Irrigation Need: {level} ({conf}% confidence)")
-        st.info(action)
-        c1, c2 = st.columns(2)
-        with c1:
-            gauge_value = 85 if level == "High" else 55 if level == "Moderate" else 25
-            st.plotly_chart(plot_gauge("Irrigation Need Gauge", gauge_value, 0, 100, (35, 70), COLOR['blue']), use_container_width=True)
-        with c2:
-            st.plotly_chart(plot_bar_dict(factors, "Irrigation Drivers"), use_container_width=True)
+    with tabs[6]:
+        label, note = ndvi_status(ndvi)
+        st.subheader("NDVI and crop stress")
+        st.write(f"Status: {label}")
+        st.write(note)
 
-elif page == "Fertilizer":
-    st.subheader("🧪 Fertilizer Recommendation")
-    crop_name = st.selectbox("Select Crop", list(TELANGANA_CROP_INFO.keys()), index=0)
-    fert_inputs = [num_input("Nitrogen", defaults["N"]), num_input("Phosphorus", defaults["P"]), num_input("Potassium", defaults["K"]), num_input("Temperature", defaults["temperature"]), num_input("Humidity", defaults["humidity"]), num_input("Soil Moisture", defaults["soil_moisture"]), 1, 1, num_input("pH", defaults["ph"]), num_input("Rainfall", defaults["rainfall"])]
-    if st.button("Predict Fertilizer"):
-        result, conf, levels = agrimodels.predict_fertilizer(fert_inputs, location, crop_name)
-        st.success(f"Fertilizer Advice: {result} ({conf}% confidence)")
-        ideal = {"Nitrogen": 75, "Phosphorus": 45, "Potassium": 40}
-        c1, c2 = st.columns(2)
-        with c1:
-            st.plotly_chart(plot_nutrient_comparison(levels, ideal, "Current vs Ideal NPK"), use_container_width=True)
-        with c2:
-            st.plotly_chart(plot_radar(levels, "NPK Radar Profile", 'rgba(20,184,166,0.25)'), use_container_width=True)
-        st.bar_chart(levels)
+    with tabs[7]:
+        st.subheader("Farmer chat assistant")
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
 
-elif page == "Soil & NPK":
-    st.subheader("🌱 Soil & NPK Prediction")
-    npk_inputs = [num_input(lbl, val) for lbl, val in zip(["pH", "EC", "Organic Carbon", "Moisture", "Temperature", "Rainfall"], [defaults["ph"], defaults["ec"], defaults["organic_carbon"], defaults["soil_moisture"], defaults["temperature"], defaults["rainfall"]])]
-    if st.button("Predict NPK"):
-        npk_vals, conf = agrimodels.predict_npk(npk_inputs)
-        st.success(f"Predicted soil nutrients ({conf}% confidence)")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.plotly_chart(plot_bar_dict(npk_vals, "Predicted NPK Values"), use_container_width=True)
-        with c2:
-            st.plotly_chart(plot_radar(npk_vals, "Soil Nutrient Radar", 'rgba(139,92,246,0.24)'), use_container_width=True)
-        st.bar_chart(npk_vals)
+        user_q = st.text_input("Ask in simple style: Which crop for my field? irrigation? fertilizer? yield? pest stress?")
+        col_a, col_b = st.columns([1, 1])
+        ask = col_a.button("Ask Assistant")
+        clear = col_b.button("Clear Chat")
 
-elif page == "NDVI & Stress":
-    st.subheader("🛰 NDVI & Crop Stress")
-    red = num_input("Red Band", 0.30)
-    nir = num_input("NIR Band", 0.72)
-    temp = num_input("Temperature", defaults["temperature"])
-    moisture = num_input("Soil Moisture", defaults["soil_moisture"])
-    humidity = num_input("Humidity", defaults["humidity"])
-    if st.button("Analyze NDVI & Stress"):
-        ndvi = agrimodels.calculate_ndvi(red, nir)
-        stress, conf, factors = agrimodels.predict_crop_stress([ndvi, temp, moisture, humidity], location)
-        st.metric("NDVI", ndvi)
-        st.success(f"Crop Stress: {stress} ({conf}% confidence)")
-        c1, c2 = st.columns(2)
-        with c1:
-            st.plotly_chart(plot_gauge("NDVI Gauge", ndvi, -1, 1, (0.35, 0.75), COLOR['teal']), use_container_width=True)
-        with c2:
-            st.plotly_chart(plot_radar(factors, "Stress Factor Radar", 'rgba(239,68,68,0.20)'), use_container_width=True)
-        st.bar_chart({"NDVI": [ndvi], "Moisture": [moisture], "Humidity": [humidity]})
+        if clear:
+            st.session_state.chat_history = []
 
-elif page == "Image Models":
-    st.subheader("📷 Disease, Pest & Nutrient Deficiency Prediction")
-    uploaded_file = st.file_uploader("Upload leaf image", type=["jpg", "jpeg", "png"])
-    if uploaded_file is not None:
-        image, arr = process_image(uploaded_file)
-        st.image(image, caption="Uploaded Image", use_column_width=True)
-        if st.button("Run Full Image Prediction"):
-            disease, disease_conf, disease_map = agrimodels.predict_disease(arr)
-            pest, pest_conf, pest_map = agrimodels.predict_pest(arr)
-            deficiency, deficiency_conf, deficiency_map = agrimodels.predict_nutrient_deficiency(arr)
-            st.session_state.last_disease_output = {"disease": disease, "confidence": disease_conf}
-            st.session_state.last_pest_output = {"pest": pest, "confidence": pest_conf}
-            st.session_state.last_deficiency_output = {"deficiency": deficiency, "confidence": deficiency_conf}
-            c1, c2, c3 = st.columns(3)
-            c1.metric("Disease", f"{disease} ({disease_conf}%)")
-            c2.metric("Pest", f"{pest} ({pest_conf}%)")
-            c3.metric("Deficiency", f"{deficiency} ({deficiency_conf}%)")
-            t1, t2, t3 = st.tabs(["Disease", "Pest", "Deficiency"])
-            with t1:
-                st.plotly_chart(plot_donut(disease_map, "Disease Prediction Probability"), use_container_width=True)
-            with t2:
-                st.plotly_chart(plot_donut(pest_map, "Pest Prediction Probability"), use_container_width=True)
-            with t3:
-                st.plotly_chart(plot_donut(deficiency_map, "Nutrient Deficiency Probability"), use_container_width=True)
+        if ask and user_q.strip():
+            reply = build_agritech_reply(
+                user_q, district, season, crop, soil_type, temperature, humidity,
+                rainfall, soil_moisture, ph, nitrogen, phosphorus, potassium, ndvi
+            )
+            st.session_state.chat_history.append((user_q, reply))
 
-elif page == "Farmer Chat Assistant":
-    st.subheader("🤖 Farmer Chat Assistant")
-    user_query = st.text_input("Ask your agriculture question")
-    if st.button("Get Answer"):
-        answer, why = generate_gpt_like_reply(user_query, st.session_state.latest_final_output, location, season)
-        st.markdown(answer)
-        st.markdown(why)
-        st.session_state.chat_history.append({"q": user_query, "a": answer, "w": why})
-    if st.session_state.chat_history:
-        st.markdown("### Chat History")
-        for i, item in enumerate(reversed(st.session_state.chat_history), 1):
-            st.markdown(f"**Q{i}:** {item['q']}")
-            st.markdown(item["a"])
-            st.markdown(item["w"])
+        for q, a in reversed(st.session_state.chat_history):
+            st.markdown(f"**Farmer:** {q}")
+            st.markdown(a)
+            st.markdown("---")
+
+    st.markdown("### Telangana crop focus used in this app")
+    for s, crops in TELANGANA_CROPS.items():
+        st.write(f"{s}: {', '.join(crops)}")
+
+
+if __name__ == "__main__":
+    main()
