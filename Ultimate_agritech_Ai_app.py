@@ -1,19 +1,31 @@
 import os
-from pathlib import Path
-
-import joblib
 import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-import streamlit as st
-import tensorflow as tf
+import joblib
+
+from pathlib import Path
 from PIL import Image
+import streamlit as st
 
 
-# =========================================================
-# STREAMLIT CONFIG
-# =========================================================
+# =========================
+# SAFE TENSORFLOW IMPORT
+# =========================
+try:
+    import tensorflow as tf
+    TF_AVAILABLE = True
+    TF_ERROR = ""
+except Exception as e:
+    tf = None
+    TF_AVAILABLE = False
+    TF_ERROR = str(e)
+
+
+# =========================
+# PAGE CONFIG
+# =========================
 st.set_page_config(
     page_title="AgriVision AI",
     page_icon="🌾",
@@ -35,23 +47,21 @@ st.markdown("""
 .subtitle {margin: 0.4rem 0 0 0; font-size: 1.05rem; opacity: 0.96;}
 .small-muted {color: #64748b; font-size: 0.9rem;}
 .badge-good {background: #dcfce7; color: #166534; padding: 0.35rem 0.75rem; border-radius: 999px; font-size: 0.8rem; font-weight: 700;}
-.status-ok {background:#dcfce7;color:#166534;padding:0.2rem 0.5rem;border-radius:999px;font-size:0.75rem;font-weight:700;}
-.status-no {background:#fee2e2;color:#991b1b;padding:0.2rem 0.5rem;border-radius:999px;font-size:0.75rem;font-weight:700;}
 </style>
 """, unsafe_allow_html=True)
 
 
-# =========================================================
+# =========================
 # REAL MODEL LOADER
-# =========================================================
+# =========================
 class AgritechModels:
-    def __init__(self, model_path="models"):
+    def __init__(self, model_path):
         self.model_path = Path(model_path)
         self.models = {}
         self.encoders = {}
         self.class_names = {}
         self.schemas = {}
-        self.load_errors = {}
+        self.load_status = {}
         self._define_schemas()
         self._load_all_models()
 
@@ -77,10 +87,7 @@ class AgritechModels:
             "fertilizer_model": {
                 "file": "fertilizer_model.pkl",
                 "type": "tabular_classification",
-                "features": [
-                    "N", "P", "K", "temperature", "humidity",
-                    "moisture", "soil_type", "crop_type", "ph", "rainfall"
-                ],
+                "features": ["N", "P", "K", "temperature", "humidity", "moisture", "soil_type", "crop_type", "ph", "rainfall"],
                 "encoder": "fertilizer_encoder"
             },
             "temp_model": {
@@ -162,8 +169,11 @@ class AgritechModels:
         if file_path.exists():
             try:
                 self.encoders[key] = joblib.load(file_path)
+                self.load_status[key] = "Loaded"
             except Exception as e:
-                self.load_errors[key] = str(e)
+                self.load_status[key] = f"Encoder load error: {e}"
+        else:
+            self.load_status[key] = "Missing"
 
     def _load_all_models(self):
         self._load_encoder_if_exists("crop_encoder", "crop_label_encoder.pkl")
@@ -175,35 +185,35 @@ class AgritechModels:
             model_file = self.model_path / schema["file"]
 
             if not model_file.exists():
-                self.load_errors[key] = f"Missing file: {schema['file']}"
+                self.load_status[key] = f"Missing file: {schema['file']}"
                 continue
 
             try:
                 if schema["file"].endswith(".h5"):
-                    self.models[key] = tf.keras.models.load_model(str(model_file), compile=False)
+                    if not TF_AVAILABLE:
+                        self.load_status[key] = f"Skipped - TensorFlow unavailable: {TF_ERROR}"
+                        continue
+                    self.models[key] = tf.keras.models.load_model(model_file)
                 else:
                     self.models[key] = joblib.load(model_file)
+
+                self.load_status[key] = "Loaded"
 
                 if schema["type"] == "image_classification" and "classes_file" in schema:
                     cls_file = self.model_path / schema["classes_file"]
                     if cls_file.exists():
-                        self.class_names[key] = joblib.load(cls_file)
+                        try:
+                            self.class_names[key] = joblib.load(cls_file)
+                        except Exception as e:
+                            self.load_status[f"{key}_classes"] = f"Classes load error: {e}"
+                    else:
+                        self.load_status[f"{key}_classes"] = f"Missing classes file: {schema['classes_file']}"
+
             except Exception as e:
-                self.load_errors[key] = str(e)
+                self.load_status[key] = f"Load error: {e}"
 
     def has_model(self, model_key):
         return model_key in self.models
-
-    def model_status(self):
-        rows = []
-        for key, schema in self.schemas.items():
-            rows.append({
-                "model_key": key,
-                "file": schema["file"],
-                "loaded": key in self.models,
-                "error": self.load_errors.get(key, "")
-            })
-        return pd.DataFrame(rows)
 
     def _get_expected_features(self, model):
         if hasattr(model, "n_features_in_"):
@@ -223,8 +233,9 @@ class AgritechModels:
 
         if x.shape[1] != expected_count:
             raise ValueError(
-                f"{model_key} expects {expected_count} features, but got {x.shape[1]}. "
-                f"Expected order: {expected_names}"
+                f"{model_key} expects {expected_count} features, but got {x.shape[1]}.\n"
+                f"Expected order: {expected_names}\n"
+                f"Input received: {x.tolist()[0]}"
             )
 
         model = self.models[model_key]
@@ -232,7 +243,7 @@ class AgritechModels:
 
         if fitted_count is not None and fitted_count != expected_count:
             raise ValueError(
-                f"{model_key} schema says {expected_count} features, but trained model expects {fitted_count}. "
+                f"{model_key} schema says {expected_count} features, but trained model expects {fitted_count}.\n"
                 f"Schema features: {expected_names}"
             )
 
@@ -243,7 +254,7 @@ class AgritechModels:
             try:
                 return self.encoders[encoder_key].inverse_transform(pred)[0]
             except Exception:
-                return pred[0]
+                pass
         return pred[0]
 
     def _predict_tabular(self, x, model_key):
@@ -256,10 +267,10 @@ class AgritechModels:
         pred = model.predict(x)
 
         if schema["type"] == "tabular_regression":
-            return float(np.array(pred).ravel()[0])
+            return float(pred[0])
 
         if schema["type"] == "tabular_regression_multi":
-            vals = np.array(pred).ravel()
+            vals = pred[0]
             return {
                 schema["outputs"][0]: float(vals[0]),
                 schema["outputs"][1]: float(vals[1]),
@@ -267,11 +278,7 @@ class AgritechModels:
             }
 
         if schema["type"] == "tabular_classification":
-            pred_arr = np.array(pred).ravel()
-            if np.issubdtype(pred_arr.dtype, np.integer):
-                pred_arr = pred_arr.astype(int)
-                return self._decode_prediction(pred_arr, schema.get("encoder"))
-            return pred[0]
+            return self._decode_prediction(pred, schema.get("encoder"))
 
         return pred.tolist()
 
@@ -380,9 +387,9 @@ class AgritechModels:
         return self._predict_image(img, "nutrient_model")
 
 
-# =========================================================
-# FALLBACK DEMO LOGIC
-# =========================================================
+# =========================
+# FALLBACK DEMO MODELS
+# =========================
 class TelanganaAgriModels:
     def __init__(self):
         self.crops = {
@@ -399,14 +406,7 @@ class TelanganaAgriModels:
 
     def predict_crop_yield(self, features):
         ph, temp, rainfall, fert, humidity, moisture = features
-        pred = (
-            (temp * 0.65)
-            + (rainfall * 0.03)
-            + (fert * 0.045)
-            + (humidity * 0.075)
-            + (moisture * 0.25)
-            - abs(ph - 6.8) * 2.2
-        )
+        pred = (temp * 0.65) + (rainfall * 0.03) + (fert * 0.045) + (humidity * 0.075) + (moisture * 0.25) - abs(ph - 6.8) * 2.2
         return round(max(pred, 0), 2), 88.0
 
     def predict_irrigation(self, features):
@@ -434,16 +434,13 @@ class TelanganaAgriModels:
         return "Use balanced NPK fertilizer with organic manure", 89.0
 
 
-# =========================================================
+# =========================
 # HYBRID WRAPPER
-# =========================================================
+# =========================
 class HybridAgriModels:
     def __init__(self, model_dir="models"):
         self.real_models = AgritechModels(model_dir)
         self.demo_models = TelanganaAgriModels()
-
-    def status_df(self):
-        return self.real_models.model_status()
 
     def predict_crop_recommendation(self, features, season="Kharif"):
         try:
@@ -483,7 +480,7 @@ class HybridAgriModels:
     def predict_health_score(self, ndvi, moisture, temp):
         return self.demo_models.predict_health_score(ndvi, moisture, temp)
 
-    def predict_fertilizer_basic(self, n, p, k):
+    def predict_fertilizer(self, n, p, k):
         return self.demo_models.predict_fertilizer(n, p, k)
 
     def predict_disease(self, arr):
@@ -492,7 +489,6 @@ class HybridAgriModels:
                 return self.real_models.predict_disease(arr)
         except Exception:
             pass
-
         score = int(np.mean(arr)) % 4
         labels = ["Healthy", "Leaf Blight", "Rust", "Leaf Spot"]
         return {
@@ -502,17 +498,12 @@ class HybridAgriModels:
         }
 
 
-@st.cache_resource
-def load_models():
-    return HybridAgriModels("models")
+agrimodels = HybridAgriModels("models")
 
 
-agrimodels = load_models()
-
-
-# =========================================================
+# =========================
 # SESSION STATE
-# =========================================================
+# =========================
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
@@ -526,9 +517,9 @@ if "season" not in st.session_state:
     st.session_state.season = "Kharif"
 
 
-# =========================================================
-# GEMINI
-# =========================================================
+# =========================
+# GEMINI HELPERS
+# =========================
 def get_gemini_api_key():
     try:
         if "GEMINI_API_KEY" in st.secrets:
@@ -546,7 +537,6 @@ def get_gemini_reply(user_text, farm_data, district, season):
 
     try:
         import google.generativeai as genai
-
         genai.configure(api_key=api_key)
         model = genai.GenerativeModel("gemini-1.5-flash")
 
@@ -562,7 +552,6 @@ def get_gemini_reply(user_text, farm_data, district, season):
 
         prompt = f"""
 You are AgriVision AI, a practical Telangana agriculture assistant.
-
 Answer in simple farmer-friendly language.
 
 Structure reply as:
@@ -587,9 +576,9 @@ User question:
         return f"Gemini chatbot error: {e}"
 
 
-# =========================================================
-# HELPERS
-# =========================================================
+# =========================
+# IMAGE PROCESSOR
+# =========================
 def process_image(uploaded_file):
     image = Image.open(uploaded_file).convert("RGB")
     image = image.resize((224, 224))
@@ -597,6 +586,9 @@ def process_image(uploaded_file):
     return image, arr
 
 
+# =========================
+# UI HELPERS
+# =========================
 def render_header():
     st.markdown(
         f"""
@@ -619,77 +611,46 @@ def render_header():
 
 def render_top_dashboard():
     c1, c2, c3, c4 = st.columns(4)
-
     with c1:
-        st.markdown(
-            "<div class='metric-card'><div class='small-muted'>Overall Health</div><h2 style='color:#16a34a;'>87.4%</h2><div class='small-muted'>+3.2% this week</div></div>",
-            unsafe_allow_html=True
-        )
+        st.markdown("<div class='metric-card'><div class='small-muted'>Overall Health</div><h2 style='color:#16a34a;'>87.4%</h2><div class='small-muted'>+3.2% this week</div></div>", unsafe_allow_html=True)
     with c2:
-        st.markdown(
-            "<div class='metric-card'><div class='small-muted'>Active Alerts</div><h2 style='color:#dc2626;'>4</h2><div class='small-muted'>2 critical zones</div></div>",
-            unsafe_allow_html=True
-        )
+        st.markdown("<div class='metric-card'><div class='small-muted'>Active Alerts</div><h2 style='color:#dc2626;'>4</h2><div class='small-muted'>2 critical zones</div></div>", unsafe_allow_html=True)
     with c3:
-        st.markdown(
-            "<div class='metric-card'><div class='small-muted'>Yield Forecast</div><h2 style='color:#166534;'>4.2 t/ha</h2><div class='small-muted'>On target</div></div>",
-            unsafe_allow_html=True
-        )
+        st.markdown("<div class='metric-card'><div class='small-muted'>Yield Forecast</div><h2 style='color:#166534;'>4.2 t/ha</h2><div class='small-muted'>On target</div></div>", unsafe_allow_html=True)
     with c4:
-        st.markdown(
-            "<div class='metric-card'><div class='small-muted'>Soil Moisture</div><h2 style='color:#2563eb;'>62%</h2><div class='small-muted'>Optimal</div></div>",
-            unsafe_allow_html=True
-        )
+        st.markdown("<div class='metric-card'><div class='small-muted'>Soil Moisture</div><h2 style='color:#2563eb;'>62%</h2><div class='small-muted'>Optimal</div></div>", unsafe_allow_html=True)
 
 
-# =========================================================
+# =========================
 # SIDEBAR
-# =========================================================
+# =========================
 st.sidebar.title("🌾 AgriVision AI")
 page = st.sidebar.radio(
     "Choose Module",
-    [
-        "Dashboard",
-        "Smart Advisor",
-        "Crop Recommendation",
-        "Yield Prediction",
-        "Irrigation",
-        "Fertilizer & Soil",
-        "NDVI Analysis",
-        "Disease Detection",
-        "AI Assistant"
-    ],
+    ["Dashboard", "Smart Advisor", "Crop Recommendation", "Yield Prediction", "Irrigation", "Fertilizer & Soil", "NDVI Analysis", "Disease Detection", "AI Assistant"],
 )
 
 st.sidebar.markdown("### Telangana Filters")
-st.session_state.district = st.sidebar.selectbox(
-    "District",
-    ["Hyderabad", "Ranga Reddy", "Medchal", "Sangareddy", "Mahabubnagar"]
-)
+st.session_state.district = st.sidebar.selectbox("District", ["Hyderabad", "Ranga Reddy", "Medchal", "Sangareddy", "Mahabubnagar"])
 st.session_state.season = st.sidebar.selectbox("Season", ["Kharif", "Rabi"])
 
-st.sidebar.markdown("### Model Status")
-status_df = agrimodels.status_df()
-loaded_count = int(status_df["loaded"].sum())
-total_count = len(status_df)
-st.sidebar.markdown(f"Loaded: **{loaded_count}/{total_count}**")
+st.sidebar.markdown("### System Status")
+if TF_AVAILABLE:
+    st.sidebar.success("TensorFlow available")
+else:
+    st.sidebar.warning("TensorFlow not available, DL models disabled")
 
-with st.sidebar.expander("View loaded models"):
-    for _, row in status_df.iterrows():
-        badge = "status-ok" if row["loaded"] else "status-no"
-        label = "Loaded" if row["loaded"] else "Missing"
-        st.markdown(
-            f"<div style='margin-bottom:8px;'><span class='{badge}'>{label}</span> {row['model_key']}</div>",
-            unsafe_allow_html=True
-        )
+with st.sidebar.expander("Model Load Status"):
+    for k, v in agrimodels.real_models.load_status.items():
+        st.write(f"{k}: {v}")
 
 render_header()
 render_top_dashboard()
 
 
-# =========================================================
+# =========================
 # PAGES
-# =========================================================
+# =========================
 if page == "Dashboard":
     st.markdown("## Farm Health Overview")
 
@@ -697,10 +658,7 @@ if page == "Dashboard":
         "Day": [f"Day {i}" for i in range(1, 31)],
         "Health Index": [72, 74, 73, 75, 77, 76, 78, 79, 80, 78, 81, 83, 82, 84, 85, 86, 84, 87, 88, 89, 87, 90, 91, 89, 92, 93, 91, 94, 95, 96]
     })
-    zone_df = pd.DataFrame({
-        "Zone": ["Healthy", "Moderate", "High Risk", "Critical"],
-        "Value": [52, 28, 14, 6]
-    })
+    zone_df = pd.DataFrame({"Zone": ["Healthy", "Moderate", "High Risk", "Critical"], "Value": [52, 28, 14, 6]})
 
     col1, col2 = st.columns([2, 1])
 
@@ -708,12 +666,12 @@ if page == "Dashboard":
         fig_line = px.line(trend_df, x="Day", y="Health Index", title="Crop Health Trend - 30 Days")
         fig_line.update_traces(line=dict(color="#16a34a", width=4))
         fig_line.update_layout(height=360, template="plotly_white")
-        st.plotly_chart(fig_line, use_container_width=True)
+        st.plotly_chart(fig_line, width="stretch")
 
     with col2:
         fig_pie = px.pie(zone_df, names="Zone", values="Value", hole=0.55, title="Zone Distribution")
         fig_pie.update_layout(height=360, template="plotly_white")
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(fig_pie, width="stretch")
 
 elif page == "Smart Advisor":
     st.markdown("## Smart Farm Advisor")
@@ -736,7 +694,7 @@ elif page == "Smart Advisor":
         red = st.number_input("Red Band", min_value=0.0, max_value=1.0, value=0.30)
         nir = st.number_input("NIR Band", min_value=0.0, max_value=1.0, value=0.72)
 
-    if st.button("Run Analysis", type="primary", use_container_width=True):
+    if st.button("Run Analysis", type="primary", width="stretch"):
         crop, crop_conf = agrimodels.predict_crop_recommendation(
             [n, p, k, temp, humidity, ph, rainfall],
             st.session_state.season
@@ -749,7 +707,7 @@ elif page == "Smart Advisor":
         )
         ndvi = agrimodels.calculate_ndvi(red, nir)
         health = agrimodels.predict_health_score(ndvi, moisture, temp)
-        fert, fert_conf = agrimodels.predict_fertilizer_basic(n, p, k)
+        fert, fert_conf = agrimodels.predict_fertilizer(n, p, k)
 
         st.session_state.latest_farm_data = {
             "crop": crop,
@@ -779,21 +737,21 @@ elif page == "Smart Advisor":
 elif page == "Crop Recommendation":
     vals = [st.number_input(f"Feature {i+1}", value=float(80 + i)) for i in range(7)]
 
-    if st.button("Recommend Crop", use_container_width=True):
+    if st.button("Recommend Crop", width="stretch"):
         crop, conf = agrimodels.predict_crop_recommendation(vals, st.session_state.season)
         st.success(f"Recommended crop: {crop} ({conf}% confidence)")
 
 elif page == "Yield Prediction":
     vals = [st.number_input(f"Input {i+1}", value=25.0 + i) for i in range(6)]
 
-    if st.button("Predict Yield", use_container_width=True):
+    if st.button("Predict Yield", width="stretch"):
         y, conf = agrimodels.predict_crop_yield(vals)
         st.metric("Expected Yield", f"{y} t/ha", f"{conf}% confidence")
 
 elif page == "Irrigation":
     vals = [st.number_input(f"Parameter {i+1}", value=40.0 + i) for i in range(5)]
 
-    if st.button("Get Irrigation Plan", use_container_width=True):
+    if st.button("Get Irrigation Plan", width="stretch"):
         result, action, conf = agrimodels.predict_irrigation(vals)
         st.info(f"Need: {result} | Action: {action} | Confidence: {conf}%")
 
@@ -802,11 +760,11 @@ elif page == "Fertilizer & Soil":
     p = st.number_input("Phosphorus", value=38.0)
     k = st.number_input("Potassium", value=42.0)
 
-    if st.button("Analyze Soil", use_container_width=True):
-        fert, conf = agrimodels.predict_fertilizer_basic(n, p, k)
+    if st.button("Analyze Soil", width="stretch"):
+        fert, conf = agrimodels.predict_fertilizer(n, p, k)
         df = pd.DataFrame({"Nutrient": ["N", "P", "K"], "Value": [n, p, k]})
         fig = px.bar(df, x="Nutrient", y="Value", color="Nutrient", title="Soil Nutrient Levels")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
         st.success(f"Recommendation: {fert} ({conf}% confidence)")
 
 elif page == "NDVI Analysis":
@@ -815,20 +773,17 @@ elif page == "NDVI Analysis":
     temp = st.slider("Temperature", 15.0, 45.0, 29.0)
     moisture = st.slider("Soil Moisture", 10.0, 80.0, 42.0)
 
-    if st.button("Calculate NDVI", use_container_width=True):
+    if st.button("Calculate NDVI", width="stretch"):
         ndvi = agrimodels.calculate_ndvi(red, nir)
         health = agrimodels.predict_health_score(ndvi, moisture, temp)
-
-        gauge = go.Figure(
-            go.Indicator(
-                mode="gauge+number",
-                value=health,
-                title={'text': "Health Score"},
-                gauge={'axis': {'range': [0, 100]}}
-            )
-        )
+        gauge = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=health,
+            title={'text': "Health Score"},
+            gauge={'axis': {'range': [0, 100]}}
+        ))
         gauge.update_layout(height=350)
-        st.plotly_chart(gauge, use_container_width=True)
+        st.plotly_chart(gauge, width="stretch")
         st.success(f"NDVI: {ndvi} | Health score: {health}%")
 
 elif page == "Disease Detection":
@@ -836,24 +791,20 @@ elif page == "Disease Detection":
 
     if uploaded_file:
         image, arr = process_image(uploaded_file)
-        st.image(image, caption="Uploaded leaf image", use_container_width=True)
+        st.image(image, caption="Uploaded leaf image", width="stretch")
 
-        if st.button("Analyze Disease", use_container_width=True):
-            try:
-                result = agrimodels.predict_disease(arr)
-                st.warning(
-                    f"Predicted condition: {result['class_name']} "
-                    f"(confidence: {round(result['confidence'] * 100, 2)}%)"
-                )
-            except Exception as e:
-                st.error(f"Prediction failed: {e}")
+        if st.button("Analyze Disease", width="stretch"):
+            result = agrimodels.predict_disease(arr)
+            st.warning(
+                f"Predicted condition: {result['class_name']} "
+                f"(confidence: {round(result['confidence'] * 100, 2)}%)"
+            )
 
 elif page == "AI Assistant":
     toolbar_text = (
         f"💬 AgriVision AI Chat | 📍 {st.session_state.district} | 🌾 {st.session_state.season} | "
         + ("✅ Smart Advisor data loaded" if st.session_state.latest_farm_data else "⚠️ Run Smart Advisor for personalized context")
     )
-
     st.markdown(f"<div class='chat-toolbar'>{toolbar_text}</div>", unsafe_allow_html=True)
 
     for message in st.session_state.chat_history:
@@ -875,7 +826,8 @@ elif page == "AI Assistant":
                     st.session_state.season
                 )
                 st.markdown(reply)
-                st.session_state.chat_history.append({"role": "assistant", "content": reply)
+                st.session_state.chat_history.append({"role": "assistant", "content": reply})
+
 
 st.markdown("---")
 st.markdown(
