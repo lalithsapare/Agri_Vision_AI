@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 from PIL import Image
+from openai import OpenAI
 
 st.set_page_config(
     page_title="AgriVision AI",
@@ -27,7 +28,6 @@ st.markdown("""
 .subtitle {margin: 0.4rem 0 0 0; font-size: 1.05rem; opacity: 0.96;}
 .small-muted {color: #64748b; font-size: 0.9rem;}
 .badge-good {background: #dcfce7; color: #166534; padding: 0.35rem 0.75rem; border-radius: 999px; font-size: 0.8rem; font-weight: 700;}
-.section-card {background: rgba(255,255,255,0.96); border-radius: 18px; padding: 1rem; margin-bottom: 1rem;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -143,32 +143,33 @@ if "season" not in st.session_state:
     st.session_state.season = "Kharif"
 
 
-def get_openai_api_key():
+def get_openrouter_api_key():
     try:
-        if "OPENAI_API_KEY" in st.secrets:
-            key = str(st.secrets["OPENAI_API_KEY"]).strip()
+        if "OPENROUTER_API_KEY" in st.secrets:
+            key = str(st.secrets["OPENROUTER_API_KEY"]).strip()
             if key:
                 return key
     except Exception:
         pass
 
-    env_key = os.getenv("OPENAI_API_KEY", "").strip()
+    env_key = os.getenv("OPENROUTER_API_KEY", "").strip()
     if env_key:
         return env_key
 
     return ""
 
 
-def get_openai_reply(user_text, farm_data, district, season):
-    api_key = get_openai_api_key()
+def get_openrouter_reply(user_text, farm_data, district, season):
+    api_key = get_openrouter_api_key()
 
     if not api_key:
-        return "OpenAI API key missing. Add OPENAI_API_KEY in Streamlit Cloud secrets."
+        return "OpenRouter API key missing. Add OPENROUTER_API_KEY in Streamlit Cloud secrets."
 
     try:
-        from openai import OpenAI
-
-        client = OpenAI(api_key=api_key)
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1"
+        )
 
         farm_context = "No latest farm data available."
         if farm_data:
@@ -180,26 +181,30 @@ def get_openai_reply(user_text, farm_data, district, season):
             )
 
         system_prompt = (
-            "You are AgriVision AI, a practical Telangana agriculture assistant. "
-            "Answer in simple farmer-friendly language. "
-            "Always format replies as: 1. What is happening 2. Why 3. Immediate action 4. Next 3 days."
+            "You are AgriVision AI, a helpful agriculture assistant for Telangana farmers. "
+            "Reply in simple, practical language. "
+            "Always structure your answer as: 1. What is happening 2. Why 3. Immediate action 4. Next 3 days."
         )
 
         user_prompt = f"Farm context: {farm_context}\n\nUser question: {user_text}"
 
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="openai/gpt-4o-mini",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.4,
+            extra_headers={
+                "HTTP-Referer": "https://agrivisionai.streamlit.app",
+                "X-Title": "AgriVision AI"
+            }
         )
 
         return response.choices[0].message.content
 
     except Exception as e:
-        return f"OpenAI chatbot error: {e}"
+        return f"OpenRouter chatbot error: {e}"
 
 
 def process_image(uploaded_file):
@@ -266,7 +271,6 @@ st.session_state.season = st.sidebar.selectbox("Season", ["Kharif", "Rabi"])
 render_header()
 render_top_dashboard()
 
-
 if page == "Dashboard":
     st.markdown("## Farm Health Overview")
 
@@ -291,7 +295,6 @@ if page == "Dashboard":
         fig_pie = px.pie(zone_df, names="Zone", values="Value", hole=0.55, title="Zone Distribution")
         fig_pie.update_layout(height=360, template="plotly_white")
         st.plotly_chart(fig_pie, use_container_width=True)
-
 
 elif page == "Smart Advisor":
     st.markdown("## Smart Farm Advisor")
@@ -341,15 +344,6 @@ elif page == "Smart Advisor":
         m3.metric("Yield", f"{yield_pred} t/ha", f"{yield_conf}% confidence")
         m4.metric("Health Score", f"{health}%", f"NDVI {ndvi}")
 
-        st.markdown(
-            f"<div class='health-card'><h3>Farm Decision Summary</h3>"
-            f"<p><strong>Crop:</strong> {crop}</p>"
-            f"<p><strong>Irrigation:</strong> {irrigation} - {action}</p>"
-            f"<p><strong>Fertilizer:</strong> {fert}</p>"
-            f"<p><strong>Expected yield:</strong> {yield_pred} t/ha</p></div>",
-            unsafe_allow_html=True
-        )
-
         c1, c2 = st.columns(2)
 
         with c1:
@@ -377,7 +371,6 @@ elif page == "Smart Advisor":
             fig_npk.update_layout(barmode="group", title="NPK Current vs Target")
             st.plotly_chart(fig_npk, use_container_width=True)
 
-
 elif page == "Crop Recommendation":
     vals = [st.number_input(f"Feature {i+1}", value=float(80 + i)) for i in range(7)]
     if st.button("Recommend Crop", use_container_width=True):
@@ -386,7 +379,6 @@ elif page == "Crop Recommendation":
         crop_df = pd.DataFrame(crop_scores, columns=["Crop", "Suitability"])
         fig = px.bar(crop_df, x="Crop", y="Suitability", color="Suitability", title="Crop Recommendation Ranking")
         st.plotly_chart(fig, use_container_width=True)
-
 
 elif page == "Yield Prediction":
     vals = [st.number_input(f"Input {i+1}", value=25.0 + i) for i in range(6)]
@@ -397,7 +389,6 @@ elif page == "Yield Prediction":
         fig = px.line(df, x="Month", y="Yield Build-up", markers=True, title="Predicted Yield Progress")
         st.plotly_chart(fig, use_container_width=True)
 
-
 elif page == "Irrigation":
     vals = [st.number_input(f"Parameter {i+1}", value=40.0 + i) for i in range(5)]
     if st.button("Get Irrigation Plan", use_container_width=True):
@@ -406,7 +397,6 @@ elif page == "Irrigation":
         df = pd.DataFrame({"Day": days, "Water": liters})
         fig = px.bar(df, x="Day", y="Water", color="Water", title="Weekly Irrigation Schedule")
         st.plotly_chart(fig, use_container_width=True)
-
 
 elif page == "Fertilizer & Soil":
     n = st.number_input("Nitrogen", value=45.0)
@@ -428,7 +418,6 @@ elif page == "Fertilizer & Soil":
 
         fig2 = px.pie(soil_df, names="Nutrient", values="Gap", title="Nutrient Deficiency Share")
         st.plotly_chart(fig2, use_container_width=True)
-
 
 elif page == "NDVI Analysis":
     red = st.slider("Red Band", 0.0, 1.0, 0.30)
@@ -457,7 +446,6 @@ elif page == "NDVI Analysis":
         st.plotly_chart(fig, use_container_width=True)
         st.success(f"NDVI: {ndvi} | Health score: {health}%")
 
-
 elif page == "Disease Detection":
     uploaded_file = st.file_uploader("Upload crop leaf image", type=["jpg", "jpeg", "png"])
 
@@ -479,13 +467,11 @@ elif page == "Disease Detection":
             fig = px.bar(prob_df, x="Condition", y="Probability", color="Probability", title="Disease Prediction Confidence")
             st.plotly_chart(fig, use_container_width=True)
 
-
 elif page == "AI Assistant":
     toolbar_text = (
         f"💬 AgriVision AI Chat | 📍 {st.session_state.district} | 🌾 {st.session_state.season} | "
         + ("✅ Smart Advisor data loaded" if st.session_state.latest_farm_data else "⚠️ Run Smart Advisor for personalized context")
     )
-
     st.markdown(f"<div class='chat-toolbar'>{toolbar_text}</div>", unsafe_allow_html=True)
 
     for message in st.session_state.chat_history:
@@ -501,7 +487,7 @@ elif page == "AI Assistant":
 
         with st.chat_message("assistant"):
             with st.spinner("AgriVision AI is thinking..."):
-                reply = get_openai_reply(
+                reply = get_openrouter_reply(
                     prompt,
                     st.session_state.latest_farm_data,
                     st.session_state.district,
@@ -510,9 +496,8 @@ elif page == "AI Assistant":
                 st.markdown(reply)
                 st.session_state.chat_history.append({"role": "assistant", "content": reply})
 
-
 st.markdown("---")
 st.markdown(
-    "<div style='text-align:center;color:#94a3b8;padding:18px;font-size:14px;'>🌾 AgriVision AI | Farm Health AI | Visualization-first edition</div>",
+    "<div style='text-align:center;color:#94a3b8;padding:18px;font-size:14px;'>🌾 AgriVision AI | OpenRouter AI enabled | Better prediction charts added</div>",
     unsafe_allow_html=True
 )
