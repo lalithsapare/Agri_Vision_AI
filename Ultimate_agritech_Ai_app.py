@@ -2,7 +2,6 @@ import os
 import requests
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
 
 st.set_page_config(
@@ -30,17 +29,14 @@ st.markdown("""
     border-radius: 18px;
     margin-bottom: 12px;
 }
+.metric-container {
+    background: #1e1e1e;
+    padding: 15px;
+    border-radius: 10px;
+}
 .alert-high {
     background:#fee2e2;
     color:#991b1b;
-    padding:12px 16px;
-    border-radius:14px;
-    margin-bottom:10px;
-    font-weight:600;
-}
-.alert-med {
-    background:#fef3c7;
-    color:#92400e;
     padding:12px 16px;
     border-radius:14px;
     margin-bottom:10px;
@@ -58,48 +54,29 @@ st.markdown("""
     color:#64748b;
     font-size:13px;
 }
-.crop-pill {
-    display:inline-block;
-    padding:10px 14px;
-    border-radius:999px;
-    background:#dcfce7;
-    color:#166534;
-    font-weight:700;
-}
 </style>
 """, unsafe_allow_html=True)
 
-ALL_CROPS = [
-    "Cotton",
-    "Maize",
-    "Red Gram",
-    "Soybean",
-    "Turmeric",
-    "Jowar",
-    "Paddy",
-    "Groundnut",
-    "Black Gram",
-    "Bengal Gram",
-    "Sesame",
-    "Sunflower"
-]
+if "chat_history" not in st.session_state:
+    st.session_state.chat_history = []
 
-if "latest_result" not in st.session_state:
-    st.session_state.latest_result = None
+if "latest_df" not in st.session_state:
+    st.session_state.latest_df = None
+
+if "farm_data" not in st.session_state:
+    st.session_state.farm_data = {}
 
 def get_secret(name, default=""):
     try:
         if name in st.secrets:
-            value = str(st.secrets[name]).strip()
-            if value:
-                return value
+            val = str(st.secrets[name]).strip()
+            if val:
+                return val
     except Exception:
         pass
-
-    env_value = os.getenv(name, "").strip()
-    if env_value:
-        return env_value
-
+    env_val = os.getenv(name, "").strip()
+    if env_val:
+        return env_val
     return default
 
 def fetch_weather(city):
@@ -120,25 +97,20 @@ def fetch_weather(city):
 
     try:
         url = "https://api.openweathermap.org/data/2.5/weather"
-        params = {
-            "q": city,
-            "appid": api_key,
-            "units": "metric"
-        }
-        response = requests.get(url, params=params, timeout=20)
-        debug["http_status"] = response.status_code
+        params = {"q": city, "appid": api_key, "units": "metric"}
+        r = requests.get(url, params=params, timeout=20)
+        debug["http_status"] = r.status_code
 
-        if response.status_code != 200:
+        if r.status_code != 200:
             debug["status"] = "api_error"
             try:
-                debug["reason"] = response.json()
+                debug["reason"] = r.json()
             except Exception:
-                debug["reason"] = response.text
+                debug["reason"] = r.text
             debug["fallback_used"] = True
             return None, debug
 
-        data = response.json()
-
+        data = r.json()
         if "main" not in data or "weather" not in data:
             debug["status"] = "invalid_response"
             debug["reason"] = data
@@ -152,7 +124,6 @@ def fetch_weather(city):
             "weather": data["weather"][0].get("main", "Unknown"),
             "city": data.get("name", city)
         }
-
         debug["status"] = "success"
         return result, debug
 
@@ -177,79 +148,22 @@ def fetch_weather(city):
 def crop_score(crop, temp, humidity, rainfall, ph, moisture, n, p, k):
     score = 50.0
 
-    if crop == "Cotton":
-        score += 15 if 25 <= temp <= 35 else 0
-        score += 10 if 40 <= humidity <= 80 else 0
-        score += 10 if rainfall >= 40 else 0
-        score += 8 if 6.0 <= ph <= 8.0 else 0
-        score += 5 if k >= 40 else 0
+    rules = {
+        "Rice":      [(20 <= temp <= 35, 14), (humidity >= 65, 10), (rainfall >= 80, 12), (moisture >= 40, 10), (5.5 <= ph <= 7.5, 7)],
+        "Cotton":    [(25 <= temp <= 35, 15), (40 <= humidity <= 80, 10), (rainfall >= 40, 10), (6.0 <= ph <= 8.0, 8), (k >= 40, 5)],
+        "Maize":     [(20 <= temp <= 32, 15), (humidity >= 50, 8), (rainfall >= 30, 10), (5.5 <= ph <= 7.5, 8), (n >= 60, 7)],
+        "Wheat":     [(15 <= temp <= 25, 15), (humidity >= 40, 7), (rainfall >= 20, 8), (6.0 <= ph <= 7.5, 8)],
+        "Sugarcane": [(24 <= temp <= 35, 15), (humidity >= 55, 8), (rainfall >= 60, 10), (moisture >= 35, 10), (6.0 <= ph <= 8.0, 7)],
+        "Soybean":   [(20 <= temp <= 30, 14), (humidity >= 55, 8), (rainfall >= 50, 10), (6.0 <= ph <= 7.5, 8)],
+        "Groundnut": [(22 <= temp <= 32, 14), (rainfall >= 25, 8), (6.0 <= ph <= 7.5, 8), (k >= 35, 5)],
+        "Chilli":    [(20 <= temp <= 30, 14), (humidity >= 45, 7), (rainfall >= 20, 8), (6.0 <= ph <= 7.5, 8)],
+        "Turmeric":  [(20 <= temp <= 32, 14), (humidity >= 60, 10), (rainfall >= 60, 10), (moisture >= 35, 8)]
+    }
 
-    elif crop == "Maize":
-        score += 15 if 20 <= temp <= 32 else 0
-        score += 8 if humidity >= 50 else 0
-        score += 10 if rainfall >= 30 else 0
-        score += 8 if 5.5 <= ph <= 7.5 else 0
-        score += 7 if n >= 60 else 0
-
-    elif crop == "Red Gram":
-        score += 14 if 22 <= temp <= 34 else 0
-        score += 10 if rainfall >= 20 else 0
-        score += 8 if 6.0 <= ph <= 7.5 else 0
-        score += 6 if moisture >= 25 else 0
-
-    elif crop == "Soybean":
-        score += 14 if 20 <= temp <= 30 else 0
-        score += 8 if humidity >= 55 else 0
-        score += 10 if rainfall >= 50 else 0
-        score += 8 if 6.0 <= ph <= 7.5 else 0
-
-    elif crop == "Turmeric":
-        score += 14 if 20 <= temp <= 32 else 0
-        score += 10 if humidity >= 60 else 0
-        score += 10 if rainfall >= 60 else 0
-        score += 8 if moisture >= 35 else 0
-
-    elif crop == "Jowar":
-        score += 14 if 24 <= temp <= 36 else 0
-        score += 8 if rainfall >= 20 else 0
-        score += 8 if 5.5 <= ph <= 8.0 else 0
-        score += 5 if moisture >= 20 else 0
-
-    elif crop == "Paddy":
-        score += 14 if 20 <= temp <= 35 else 0
-        score += 10 if humidity >= 65 else 0
-        score += 12 if rainfall >= 80 else 0
-        score += 10 if moisture >= 40 else 0
-        score += 7 if 5.5 <= ph <= 7.5 else 0
-
-    elif crop == "Groundnut":
-        score += 14 if 22 <= temp <= 32 else 0
-        score += 8 if rainfall >= 25 else 0
-        score += 8 if 6.0 <= ph <= 7.5 else 0
-        score += 5 if k >= 35 else 0
-
-    elif crop == "Black Gram":
-        score += 12 if 24 <= temp <= 34 else 0
-        score += 8 if rainfall >= 20 else 0
-        score += 7 if humidity >= 45 else 0
-        score += 8 if 6.0 <= ph <= 7.5 else 0
-
-    elif crop == "Bengal Gram":
-        score += 14 if 18 <= temp <= 30 else 0
-        score += 10 if rainfall <= 60 else 0
-        score += 8 if 6.0 <= ph <= 8.0 else 0
-        score += 5 if moisture >= 20 else 0
-
-    elif crop == "Sesame":
-        score += 13 if 24 <= temp <= 34 else 0
-        score += 8 if rainfall >= 20 else 0
-        score += 8 if 5.5 <= ph <= 7.5 else 0
-
-    elif crop == "Sunflower":
-        score += 13 if 20 <= temp <= 32 else 0
-        score += 8 if rainfall >= 20 else 0
-        score += 7 if humidity <= 75 else 0
-        score += 8 if 6.0 <= ph <= 7.8 else 0
+    if crop in rules:
+        for condition, add_score in rules[crop]:
+            if condition:
+                score += add_score
 
     score += min(n / 20, 5)
     score += min(p / 20, 5)
@@ -259,55 +173,37 @@ def crop_score(crop, temp, humidity, rainfall, ph, moisture, n, p, k):
 
 def predict_yield(crop, temp, humidity, rainfall, ph, moisture, n, p, k):
     base = {
-        "Cotton": 22,
-        "Maize": 45,
-        "Red Gram": 14,
-        "Soybean": 20,
-        "Turmeric": 65,
-        "Jowar": 18,
-        "Paddy": 55,
-        "Groundnut": 24,
-        "Black Gram": 13,
-        "Bengal Gram": 16,
-        "Sesame": 10,
-        "Sunflower": 17
-    }.get(crop, 20)
+        "Rice": 5.5,
+        "Cotton": 2.2,
+        "Maize": 4.5,
+        "Wheat": 4.0,
+        "Sugarcane": 8.0,
+        "Soybean": 2.0,
+        "Groundnut": 2.4,
+        "Chilli": 3.0,
+        "Turmeric": 6.5
+    }.get(crop, 2.0)
 
     factor = (
-        (temp * 0.18) +
-        (humidity * 0.07) +
-        (rainfall * 0.03) +
-        (moisture * 0.22) +
-        ((n + p + k) * 0.04) -
-        (abs(ph - 6.8) * 2.0)
+        (temp * 0.02) +
+        (humidity * 0.01) +
+        (rainfall * 0.004) +
+        (moisture * 0.02) +
+        ((n + p + k) * 0.002) -
+        (abs(ph - 6.8) * 0.15)
     )
 
-    return max(1.0, round((base + factor) / 10, 2))
+    return round(max(0.8, base + factor), 2)
+
+def predict_risk(yield_pred):
+    return "High" if yield_pred < 4 else "Low"
 
 def irrigation_advice(moisture, temp, rainfall):
     if rainfall > 20 or moisture > 60:
-        return "Low", "Skip irrigation today"
+        return "Low"
     if moisture < 30 and temp > 32:
-        return "High", "Provide deep irrigation immediately"
-    return "Moderate", "Light irrigation recommended"
-
-def rain_prediction(rainfall, humidity, temp):
-    chance = (humidity * 0.7) + (rainfall * 8) - (temp * 0.4)
-    return min(100, max(0, round(chance, 1)))
-
-def smart_alerts(crop, moisture, rainfall, temp, suitability):
-    alerts = []
-
-    if suitability < 65:
-        alerts.append(("high", f"🚨 {crop} suitability is low under current conditions."))
-    if moisture < 25:
-        alerts.append(("med", "⚠ Low soil moisture detected."))
-    if rainfall < 5 and temp > 35:
-        alerts.append(("high", "🚨 High heat and low rain risk detected."))
-    if suitability >= 75 and 25 <= moisture <= 60:
-        alerts.append(("good", f"✅ {crop} is in a favorable growing range."))
-
-    return alerts
+        return "High"
+    return "Moderate"
 
 st.sidebar.title("🌾 Agri Vision AI")
 
@@ -316,7 +212,17 @@ district = st.sidebar.selectbox(
     ["Hyderabad", "Warangal", "Karimnagar", "Nizamabad", "Khammam", "Mahabubnagar"]
 )
 
-selected_crop = st.sidebar.selectbox("Select Crop", ALL_CROPS)
+st.sidebar.subheader("🌾 Crop Selection")
+crop_list = [
+    "Rice", "Cotton", "Maize", "Wheat", "Sugarcane",
+    "Soybean", "Groundnut", "Chilli", "Turmeric"
+]
+
+selected_crops = st.sidebar.multiselect(
+    "Select crops to analyze",
+    crop_list,
+    default=["Rice"]
+)
 
 st.sidebar.markdown("### Manual Backup Inputs")
 manual_temp = st.sidebar.number_input("Temperature (°C)", value=29.0)
@@ -328,10 +234,10 @@ manual_n = st.sidebar.number_input("Nitrogen (N)", value=80.0)
 manual_p = st.sidebar.number_input("Phosphorus (P)", value=42.0)
 manual_k = st.sidebar.number_input("Potassium (K)", value=40.0)
 
-st.markdown(f"""
+st.markdown("""
 <div class="hero">
     <h1>Agri Vision AI</h1>
-    <p>Selected crop: <b>{selected_crop}</b> | City: <b>{district}</b> | One-click farm prediction</p>
+    <p>Multi-crop analysis dashboard with weather, yield, risk, comparison charts, alerts, and chatbot context</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -341,13 +247,11 @@ if weather_data is not None:
     temp = weather_data["temperature"]
     humidity = weather_data["humidity"]
     rainfall = weather_data["rainfall"]
-    weather_label = weather_data["weather"]
     weather_mode = "Live Weather API"
 else:
     temp = manual_temp
     humidity = manual_humidity
     rainfall = manual_rainfall
-    weather_label = "Manual input active"
     weather_mode = "Manual backup"
 
 ph = manual_ph
@@ -366,124 +270,112 @@ with m3:
 with m4:
     st.metric("Rainfall", f"{rainfall} mm")
 
-if weather_data is None:
-    st.warning("Weather service is currently unavailable. Manual values are being used.")
-
 with st.expander("Weather debug details", expanded=False):
     st.json(weather_debug)
 
-if st.button("🚀 Predict All", type="primary", use_container_width=True):
-    suitability = crop_score(selected_crop, temp, humidity, rainfall, ph, moisture, n, p, k)
-    yield_pred = predict_yield(selected_crop, temp, humidity, rainfall, ph, moisture, n, p, k)
-    irrigation_level, irrigation_action = irrigation_advice(moisture, temp, rainfall)
-    rain_chance = rain_prediction(rainfall, humidity, temp)
+if st.button("🚀 Analyze Selected Crops", type="primary", use_container_width=True):
+    if not selected_crops:
+        st.warning("Please select at least one crop.")
+    else:
+        results = []
 
-    st.session_state.latest_result = {
-        "crop": str(selected_crop),
-        "temperature": float(temp),
-        "humidity": float(humidity),
-        "rainfall": float(rainfall),
-        "ph": float(ph),
-        "moisture": float(moisture),
-        "n": float(n),
-        "p": float(p),
-        "k": float(k),
-        "weather_label": str(weather_label),
-        "weather_mode": str(weather_mode),
-        "suitability": float(suitability),
-        "yield_pred": float(yield_pred),
-        "irrigation_level": str(irrigation_level),
-        "irrigation_action": str(irrigation_action),
-        "rain_chance": float(rain_chance)
-    }
+        for crop in selected_crops:
+            yield_pred = predict_yield(crop, temp, humidity, rainfall, ph, moisture, n, p, k)
+            risk = predict_risk(yield_pred)
+            suitability = crop_score(crop, temp, humidity, rainfall, ph, moisture, n, p, k)
+            irrigation = irrigation_advice(moisture, temp, rainfall)
 
-if st.session_state.latest_result:
-    result = st.session_state.latest_result
+            results.append({
+                "Crop": crop,
+                "Predicted Yield": yield_pred,
+                "Suitability": suitability,
+                "Risk": risk,
+                "Irrigation": irrigation
+            })
 
-    st.markdown('<div class="card">', unsafe_allow_html=True)
-    st.subheader("Selected Crop")
-    st.markdown(f'<span class="crop-pill">{result["crop"]}</span>', unsafe_allow_html=True)
-    st.markdown('</div>', unsafe_allow_html=True)
+        df = pd.DataFrame(results)
+        st.session_state.latest_df = df
+        st.session_state.farm_data = {
+            "selected_crops": selected_crops,
+            "temperature": temp,
+            "humidity": humidity,
+            "rainfall": rainfall,
+            "ph": ph,
+            "moisture": moisture,
+            "n": n,
+            "p": p,
+            "k": k
+        }
 
-    a, b, c = st.columns(3)
-    with a:
-        st.metric("Suitability", f'{result["suitability"]}%')
-    with b:
-        st.metric("Yield Prediction", f'{result["yield_pred"]} t/ha')
-    with c:
-        st.metric("Rain Chance", f'{result["rain_chance"]}%')
+if st.session_state.latest_df is not None:
+    df = st.session_state.latest_df
 
-    x1, x2 = st.columns(2)
+    st.subheader("Multi-Crop Results")
+    st.dataframe(df, use_container_width=True)
 
-    with x1:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.subheader("Prediction Summary")
-        st.write(f"Weather source: {result['weather_mode']}")
-        st.write(f"Weather condition: {result['weather_label']}")
-        st.write(f"Temperature: {result['temperature']} °C")
-        st.write(f"Humidity: {result['humidity']} %")
-        st.write(f"Rainfall: {result['rainfall']} mm")
-        st.write(f"Soil pH: {result['ph']}")
-        st.write(f"Soil moisture: {result['moisture']} %")
-        st.write(f"Irrigation need: {result['irrigation_level']}")
-        st.write(f"Action: {result['irrigation_action']}")
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.subheader("🌾 Crop Yield Comparison")
+    fig = px.bar(
+        df,
+        x="Crop",
+        y="Predicted Yield",
+        color="Risk",
+        title="🌾 Crop Yield Comparison"
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
-    with x2:
-        st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.subheader("Why this result")
-        st.write(f"{result['crop']} was scored using weather, humidity, rainfall, soil moisture, pH, and NPK values.")
-        st.write("Suitability shows how well the selected crop matches current farm conditions.")
-        st.write("Yield is an estimated value based on crop baseline plus environmental adjustments.")
-        st.markdown('</div>', unsafe_allow_html=True)
+    st.subheader("Crop KPI Cards")
+    cols = st.columns(len(df)) if len(df) <= 4 else st.columns(4)
+
+    for i, row in df.iterrows():
+        col = cols[i % len(cols)]
+        with col:
+            st.metric(
+                label=row["Crop"],
+                value=f"{row['Predicted Yield']} t/ha",
+                delta=row["Risk"]
+            )
 
     st.subheader("Smart Alerts")
-    alerts = smart_alerts(
-        result["crop"],
-        result["moisture"],
-        result["rainfall"],
-        result["temperature"],
-        result["suitability"]
-    )
+    for _, row in df.iterrows():
+        if row["Risk"] == "High":
+            st.error(f"🚨 {row['Crop']} is at HIGH risk")
+        else:
+            st.success(f"✅ {row['Crop']} is stable")
 
-    if alerts:
-        for level, message in alerts:
-            if level == "high":
-                st.markdown(f'<div class="alert-high">{message}</div>', unsafe_allow_html=True)
-            elif level == "med":
-                st.markdown(f'<div class="alert-med">{message}</div>', unsafe_allow_html=True)
-            else:
-                st.markdown(f'<div class="alert-good">{message}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown('<div class="alert-good">✅ No major alerts detected.</div>', unsafe_allow_html=True)
+    best_crop = df.sort_values("Predicted Yield", ascending=False).iloc[0]
+    st.success(f"🏆 Best Crop: {best_crop['Crop']} with {best_crop['Predicted Yield']} t/ha")
 
-    st.subheader("Analytics")
+st.subheader("AI Chatbot Context Demo")
+user_question = st.text_input("Ask for crop advice")
 
-    col1, col2 = st.columns(2)
+if st.button("Ask AI", use_container_width=True):
+    farm_data = st.session_state.get("farm_data", {})
+    farm_data["selected_crops"] = selected_crops
 
-    with col1:
-        metric_df = pd.DataFrame({
-            "Metric": ["Temperature", "Humidity", "Rainfall", "Moisture", "Suitability", "Rain Chance"],
-            "Value": [
-                result["temperature"],
-                result["humidity"],
-                result["rainfall"],
-                result["moisture"],
-                result["suitability"],
-                result["rain_chance"]
-            ]
-        })
-        fig_bar = px.bar(metric_df, x="Metric", y="Value", color="Metric", title="All-in-One Prediction Metrics")
-        st.plotly_chart(fig_bar, use_container_width=True)
+    prompt = f"""
+Farmer selected crops: {selected_crops}
 
-    with col2:
-        fig_gauge = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=result["suitability"],
-            title={'text': f'{result["crop"]} Suitability'},
-            gauge={'axis': {'range': [0, 100]}}
-        ))
-        fig_gauge.update_layout(height=400)
-        st.plotly_chart(fig_gauge, use_container_width=True)
+Weather:
+- Temperature: {farm_data.get('temperature', temp)}
+- Humidity: {farm_data.get('humidity', humidity)}
+- Rainfall: {farm_data.get('rainfall', rainfall)}
 
-st.markdown("<div class='small-muted'>Agri Vision AI | Crop selected from sidebar | Weather fallback handled safely</div>", unsafe_allow_html=True)
+Soil:
+- pH: {farm_data.get('ph', ph)}
+- Moisture: {farm_data.get('moisture', moisture)}
+- N: {farm_data.get('n', n)}
+- P: {farm_data.get('p', p)}
+- K: {farm_data.get('k', k)}
+
+User question:
+{user_question}
+
+Give advice for each crop separately:
+- Yield improvement
+- Irrigation
+- Fertilizer
+"""
+
+    st.text_area("Prompt sent to chatbot", value=prompt, height=280)
+
+st.markdown("<div class='small-muted'>Agri Vision AI | Multi-crop selection | Comparison charts | Smart alerts | Chatbot-ready context</div>", unsafe_allow_html=True)
