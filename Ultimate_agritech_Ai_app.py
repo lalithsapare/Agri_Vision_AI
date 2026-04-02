@@ -624,7 +624,7 @@ elif page == "Yield Prediction":
     vals = [st.number_input(f"Input {i+1}", value=25.0 + i, key=f"yp_{i}") for i in range(6)]
     if st.button("Predict Yield", use_container_width=True):
         y, conf = agrimodels.predict_crop_yield(vals)
-        st.metric("Expected Yield", f"{y} t/ha", f"{conf}% confidence)
+        st.metric("Expected Yield", f"{y} t/ha", f"{conf}% confidence")
 
 elif page == "Irrigation":
     vals = [st.number_input(f"Parameter {i+1}", value=40.0 + i, key=f"ir_{i}") for i in range(5)]
