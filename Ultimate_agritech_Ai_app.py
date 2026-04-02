@@ -16,7 +16,13 @@ try:
 except Exception:
     OPENAI_AVAILABLE = False
 
-st.set_page_config(page_title="Agri Vision AI – Telangana Edition", page_icon="🌾", layout="wide")
+
+st.set_page_config(
+    page_title="Agri Vision AI – Telangana Edition",
+    page_icon="🌾",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
 st.markdown("""
 <style>
@@ -26,8 +32,10 @@ st.markdown("""
 .hero {background: linear-gradient(90deg, #166534, #22c55e); color: white; padding: 24px; border-radius: 22px; margin-bottom: 16px;}
 .card {background: rgba(255,255,255,0.96); padding: 16px; border-radius: 18px; margin-bottom: 12px;}
 .small {color:#64748b;font-size:13px;}
+.footer {color:#94a3b8;font-size:13px;padding-top:20px;}
 </style>
 """, unsafe_allow_html=True)
+
 
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
@@ -36,34 +44,81 @@ if "latest_result" not in st.session_state:
     st.session_state.latest_result = None
 
 
-def get_secret(name):
+def get_secret(name: str, default: str = ""):
     try:
-        value = str(st.secrets[name]).strip()
-        if value:
-            return value
+        if name in st.secrets:
+            value = str(st.secrets[name]).strip()
+            if value:
+                return value
     except Exception:
         pass
-    return os.getenv(name, "").strip()
+
+    env_value = os.getenv(name, "").strip()
+    if env_value:
+        return env_value
+
+    return default
 
 
-def fetch_weather(city):
+def fetch_weather(city: str):
     api_key = get_secret("OPENWEATHER_API_KEY")
+    debug = {
+        "city": city,
+        "has_key": bool(api_key),
+        "status": "unknown",
+        "reason": ""
+    }
+
     if not api_key:
-        return None
+        debug["status"] = "missing_key"
+        debug["reason"] = "OPENWEATHER_API_KEY not found in Streamlit secrets or environment."
+        return None, debug
+
     try:
         url = "https://api.openweathermap.org/data/2.5/weather"
-        params = {"q": city, "appid": api_key, "units": "metric"}
-        r = requests.get(url, params=params, timeout=20)
-        data = r.json()
-        if "main" not in data:
-            return None
-        return {
-            "temperature": float(data["main"]["temp"]),
-            "humidity": float(data["main"]["humidity"]),
-            "rainfall": float(data.get("rain", {}).get("1h", 0))
+        params = {
+            "q": city,
+            "appid": api_key,
+            "units": "metric"
         }
-    except Exception:
-        return None
+        r = requests.get(url, params=params, timeout=20)
+        debug["http_status"] = r.status_code
+
+        if r.status_code != 200:
+            debug["status"] = "api_error"
+            try:
+                debug["reason"] = r.json()
+            except Exception:
+                debug["reason"] = r.text
+            return None, debug
+
+        data = r.json()
+
+        if "main" not in data:
+            debug["status"] = "bad_response"
+            debug["reason"] = data
+            return None, debug
+
+        result = {
+            "temperature": float(data["main"].get("temp", 29.0)),
+            "humidity": float(data["main"].get("humidity", 75.0)),
+            "rainfall": float(data.get("rain", {}).get("1h", 0.0)),
+            "weather": data["weather"][0]["main"] if data.get("weather") else "Unknown",
+            "city": data.get("name", city)
+        }
+
+        debug["status"] = "success"
+        return result, debug
+
+    except requests.exceptions.Timeout:
+        debug["status"] = "timeout"
+        debug["reason"] = "Weather API request timed out."
+        return None, debug
+
+    except Exception as e:
+        debug["status"] = "exception"
+        debug["reason"] = str(e)
+        return None, debug
 
 
 class AgriEngine:
@@ -78,6 +133,7 @@ class AgriEngine:
         score = int(n + p + k + temp + humidity + ph + rainfall) % len(crop_list)
         selected = crop_list[score]
         confidence = round(86 + (score % 10), 1)
+
         suitability = []
         base = (n + p + k + temp + humidity + rainfall) / 6
         for i, crop in enumerate(crop_list):
@@ -85,7 +141,9 @@ class AgriEngine:
                 "Crop": crop,
                 "Suitability": round(max(45, min(98, 58 + ((base + i * 6.5) % 36))), 1)
             })
+
         suitability = sorted(suitability, key=lambda x: x["Suitability"], reverse=True)
+
         return {
             "crop": selected,
             "confidence": confidence,
@@ -126,7 +184,14 @@ class AgriEngine:
         else:
             need, action, conf = "Moderate", "Light irrigation", 89.0
             liters = [35, 38, 40, 34, 32, 30, 28]
-        return {"need": need, "action": action, "confidence": conf, "days": ["Day1","Day2","Day3","Day4","Day5","Day6","Day7"], "liters": liters}
+
+        return {
+            "need": need,
+            "action": action,
+            "confidence": conf,
+            "days": ["Day1", "Day2", "Day3", "Day4", "Day5", "Day6", "Day7"],
+            "liters": liters
+        }
 
     def fertilizer(self, n, p, k):
         if n < 50:
@@ -137,10 +202,18 @@ class AgriEngine:
             rec = "Apply potash for stress tolerance"
         else:
             rec = "Use balanced NPK fertilizer with organic manure"
+
         target = {"N": 80, "P": 45, "K": 45}
         current = {"N": n, "P": p, "K": k}
         gap = {key: max(target[key] - current[key], 0) for key in target}
-        return {"advice": rec, "confidence": 89.0, "current": current, "target": target, "gap": gap}
+
+        return {
+            "advice": rec,
+            "confidence": 89.0,
+            "current": current,
+            "target": target,
+            "gap": gap
+        }
 
     def ndvi(self, red, nir, moisture, temp):
         ndvi_val = round((nir - red) / (nir + red + 1e-8), 4)
@@ -149,7 +222,14 @@ class AgriEngine:
         trend_days = [f"D{i}" for i in range(1, 8)]
         trend_vals = [round(max(ndvi_val + x, 0), 3) for x in [-0.06, -0.03, -0.01, 0.00, 0.02, 0.03, 0.05]]
         risk = max(0, min(100, round(100 - health, 1)))
-        return {"ndvi": ndvi_val, "health": health, "risk": risk, "days": trend_days, "trend": trend_vals}
+
+        return {
+            "ndvi": ndvi_val,
+            "health": health,
+            "risk": risk,
+            "days": trend_days,
+            "trend": trend_vals
+        }
 
     def disease(self, image_present=False):
         labels = ["Healthy", "Leaf Blight", "Rust", "Leaf Spot"]
@@ -162,13 +242,33 @@ class AgriEngine:
         }
 
     def predict_all(self, payload):
-        crop = self.crop_recommendation(payload["n"], payload["p"], payload["k"], payload["temperature"], payload["humidity"], payload["ph"], payload["rainfall"], payload["season"])
-        yld = self.yield_prediction(payload["ph"], payload["temperature"], payload["rainfall"], payload["n"], payload["humidity"], payload["soil_moisture"])
-        irr = self.irrigation(payload["soil_moisture"], payload["temperature"], payload["humidity"], payload["ph"], payload["rainfall"])
+        crop = self.crop_recommendation(
+            payload["n"], payload["p"], payload["k"], payload["temperature"],
+            payload["humidity"], payload["ph"], payload["rainfall"], payload["season"]
+        )
+        yld = self.yield_prediction(
+            payload["ph"], payload["temperature"], payload["rainfall"],
+            payload["n"], payload["humidity"], payload["soil_moisture"]
+        )
+        irr = self.irrigation(
+            payload["soil_moisture"], payload["temperature"],
+            payload["humidity"], payload["ph"], payload["rainfall"]
+        )
         fert = self.fertilizer(payload["n"], payload["p"], payload["k"])
-        ndvi = self.ndvi(payload["red_band"], payload["nir_band"], payload["soil_moisture"], payload["temperature"])
+        ndvi = self.ndvi(
+            payload["red_band"], payload["nir_band"],
+            payload["soil_moisture"], payload["temperature"]
+        )
         disease = self.disease(payload.get("image_present", False))
-        return {"crop": crop, "yield": yld, "irrigation": irr, "fertilizer": fert, "ndvi": ndvi, "disease": disease}
+
+        return {
+            "crop": crop,
+            "yield": yld,
+            "irrigation": irr,
+            "fertilizer": fert,
+            "ndvi": ndvi,
+            "disease": disease
+        }
 
 
 engine = AgriEngine()
@@ -185,20 +285,22 @@ MODEL_METRICS = {
 }
 
 
-def build_pdf_report(data):
+def build_pdf_report(lines):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=A4)
     c.setFont("Helvetica-Bold", 15)
     c.drawString(50, 800, "Agri Vision AI – Final Farm Report")
     c.setFont("Helvetica", 11)
     y = 770
-    for line in data:
+
+    for line in lines:
         c.drawString(50, y, str(line))
         y -= 22
         if y < 60:
             c.showPage()
             c.setFont("Helvetica", 11)
             y = 800
+
     c.save()
     buffer.seek(0)
     return buffer
@@ -209,7 +311,7 @@ def get_ai_reply(question, context):
     if not api_key:
         return "OpenRouter API key missing. Add OPENROUTER_API_KEY in Streamlit secrets."
     if not OPENAI_AVAILABLE:
-        return "openai package not installed. Add openai to requirements.txt."
+        return "openai package not installed. Run: pip install openai"
 
     try:
         client = OpenAI(api_key=api_key, base_url="https://openrouter.ai/api/v1")
@@ -230,9 +332,13 @@ def get_ai_reply(question, context):
         return f"AI error: {e}"
 
 
-st.markdown("<div class='hero'><h1>🌾 Agri Vision AI – Telangana Edition</h1><p>All modules, all plots, AI predict-all, report downloads, and model performance dashboard</p></div>", unsafe_allow_html=True)
+st.markdown(
+    "<div class='hero'><h1>🌾 Agri Vision AI – Telangana Edition</h1><p>All modules, all plots, AI predict-all, report downloads, and model performance dashboard</p></div>",
+    unsafe_allow_html=True
+)
 
 st.sidebar.title("Agri Vision AI")
+
 module = st.sidebar.radio(
     "All Modules",
     [
@@ -251,22 +357,48 @@ module = st.sidebar.radio(
     ]
 )
 
-district = st.sidebar.selectbox("District", ["Hyderabad", "Ranga Reddy", "Medchal", "Sangareddy", "Mahabubnagar"])
+district = st.sidebar.selectbox(
+    "District",
+    ["Hyderabad", "Ranga Reddy", "Medchal", "Sangareddy", "Mahabubnagar"]
+)
+
 season = st.sidebar.selectbox("Season", ["Kharif", "Rabi"])
 
-weather = fetch_weather(district)
 
+# =========================
+# WEATHER FETCH ADDED HERE
+# =========================
+weather, weather_debug = fetch_weather(district)
+
+
+# =========================
+# COMMON INPUTS WITH WEATHER DEFAULTS
+# =========================
 st.sidebar.markdown("### Common Inputs")
 n = st.sidebar.number_input("Nitrogen (N)", value=88.0)
 p = st.sidebar.number_input("Phosphorus (P)", value=40.0)
 k = st.sidebar.number_input("Potassium (K)", value=41.0)
 ph = st.sidebar.number_input("Soil pH", value=6.7)
-temperature = st.sidebar.number_input("Temperature (°C)", value=float(weather["temperature"]) if weather else 29.0)
-humidity = st.sidebar.number_input("Humidity (%)", value=float(weather["humidity"]) if weather else 78.0)
-rainfall = st.sidebar.number_input("Rainfall (mm)", value=float(weather["rainfall"]) if weather else 12.0)
+
+temperature = st.sidebar.number_input(
+    "Temperature (°C)",
+    value=float(weather["temperature"]) if weather else 29.0
+)
+
+humidity = st.sidebar.number_input(
+    "Humidity (%)",
+    value=float(weather["humidity"]) if weather else 78.0
+)
+
+rainfall = st.sidebar.number_input(
+    "Rainfall (mm)",
+    value=float(weather["rainfall"]) if weather else 12.0
+)
+
 soil_moisture = st.sidebar.number_input("Soil Moisture (%)", value=42.0)
 red_band = st.sidebar.number_input("Red Band", min_value=0.0, max_value=1.0, value=0.30)
 nir_band = st.sidebar.number_input("NIR Band", min_value=0.0, max_value=1.0, value=0.72)
+
 
 payload = {
     "n": n,
@@ -286,6 +418,7 @@ payload = {
 all_result = engine.predict_all(payload)
 st.session_state.latest_result = all_result
 
+
 if module == "Dashboard":
     c1, c2, c3, c4 = st.columns(4)
     c1.metric("Crop", all_result["crop"]["crop"], f"{all_result['crop']['confidence']}%")
@@ -297,17 +430,23 @@ if module == "Dashboard":
 
     with left:
         crop_df = pd.DataFrame(all_result["crop"]["scores"])
-        fig = px.bar(crop_df, x="Crop", y="Suitability", color="Suitability", title="Crop Suitability Scores")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(
+            px.bar(crop_df, x="Crop", y="Suitability", color="Suitability", title="Crop Suitability Scores"),
+            use_container_width=True
+        )
 
         ndvi_df = pd.DataFrame({"Day": all_result["ndvi"]["days"], "NDVI": all_result["ndvi"]["trend"]})
-        fig2 = px.line(ndvi_df, x="Day", y="NDVI", markers=True, title="NDVI Trend")
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(
+            px.line(ndvi_df, x="Day", y="NDVI", markers=True, title="NDVI Trend"),
+            use_container_width=True
+        )
 
     with right:
         irr_df = pd.DataFrame({"Day": all_result["irrigation"]["days"], "Liters": all_result["irrigation"]["liters"]})
-        fig3 = px.area(irr_df, x="Day", y="Liters", title="Irrigation Plan")
-        st.plotly_chart(fig3, use_container_width=True)
+        st.plotly_chart(
+            px.area(irr_df, x="Day", y="Liters", title="Irrigation Plan"),
+            use_container_width=True
+        )
 
         fig4 = go.Figure(go.Indicator(
             mode="gauge+number",
@@ -319,6 +458,7 @@ if module == "Dashboard":
 
 elif module == "Predict All with AI":
     st.subheader("Unified Prediction and AI Summary")
+
     if st.button("Predict All", use_container_width=True):
         result = all_result
         st.success("All module predictions generated successfully.")
@@ -341,34 +481,58 @@ elif module == "Predict All with AI":
 elif module == "Crop Recommendation":
     result = all_result["crop"]
     st.metric("Recommended Crop", result["crop"], f"{result['confidence']}% confidence")
+
     crop_df = pd.DataFrame(result["scores"])
-    st.plotly_chart(px.bar(crop_df, x="Crop", y="Suitability", color="Suitability", title="Crop Ranking"), use_container_width=True)
+    st.plotly_chart(
+        px.bar(crop_df, x="Crop", y="Suitability", color="Suitability", title="Crop Ranking"),
+        use_container_width=True
+    )
 
     why_df = pd.DataFrame({"Feature": list(result["why"].keys()), "Importance": list(result["why"].values())})
-    st.plotly_chart(px.bar(why_df, x="Importance", y="Feature", orientation="h", title="Why this crop was selected"), use_container_width=True)
+    st.plotly_chart(
+        px.bar(why_df, x="Importance", y="Feature", orientation="h", title="Why this crop was selected"),
+        use_container_width=True
+    )
 
 elif module == "Yield Prediction":
     result = all_result["yield"]
     st.metric("Predicted Yield", f"{result['yield']} t/ha")
-    ydf = pd.DataFrame({"Month": result["months"], "Yield": result["trend"], "Rainfall": result["rainfall_effect"]})
-    st.plotly_chart(px.line(ydf, x="Month", y="Yield", markers=True, title="Yield Trend"), use_container_width=True)
-    st.plotly_chart(px.bar(ydf, x="Month", y="Rainfall", title="Yield vs Rainfall Driver"), use_container_width=True)
+
+    ydf = pd.DataFrame({
+        "Month": result["months"],
+        "Yield": result["trend"],
+        "Rainfall": result["rainfall_effect"]
+    })
+    st.plotly_chart(
+        px.line(ydf, x="Month", y="Yield", markers=True, title="Yield Trend"),
+        use_container_width=True
+    )
+    st.plotly_chart(
+        px.bar(ydf, x="Month", y="Rainfall", title="Yield vs Rainfall Driver"),
+        use_container_width=True
+    )
 
 elif module == "Irrigation":
     result = all_result["irrigation"]
     st.metric("Irrigation Need", result["need"], result["action"])
+
     idf = pd.DataFrame({"Day": result["days"], "Liters": result["liters"]})
-    st.plotly_chart(px.bar(idf, x="Day", y="Liters", color="Liters", title="Weekly Irrigation Schedule"), use_container_width=True)
+    st.plotly_chart(
+        px.bar(idf, x="Day", y="Liters", color="Liters", title="Weekly Irrigation Schedule"),
+        use_container_width=True
+    )
 
 elif module == "Fertilizer & Soil":
     result = all_result["fertilizer"]
     st.metric("Fertilizer Advice", result["advice"], f"{result['confidence']}% confidence")
+
     soil_df = pd.DataFrame({
         "Nutrient": ["N", "P", "K"],
         "Current": [result["current"]["N"], result["current"]["P"], result["current"]["K"]],
         "Target": [result["target"]["N"], result["target"]["P"], result["target"]["K"]],
         "Gap": [result["gap"]["N"], result["gap"]["P"], result["gap"]["K"]],
     })
+
     fig = go.Figure()
     fig.add_bar(name="Current", x=soil_df["Nutrient"], y=soil_df["Current"])
     fig.add_bar(name="Target", x=soil_df["Nutrient"], y=soil_df["Target"])
@@ -388,30 +552,80 @@ elif module == "Fertilizer & Soil":
 elif module == "NDVI Analysis":
     result = all_result["ndvi"]
     st.metric("NDVI", result["ndvi"], f"Health {result['health']}%")
+
     ndvi_df = pd.DataFrame({"Day": result["days"], "NDVI": result["trend"]})
-    st.plotly_chart(px.line(ndvi_df, x="Day", y="NDVI", markers=True, title="NDVI Trend"), use_container_width=True)
-    st.plotly_chart(go.Figure(go.Indicator(
+    st.plotly_chart(
+        px.line(ndvi_df, x="Day", y="NDVI", markers=True, title="NDVI Trend"),
+        use_container_width=True
+    )
+
+    gauge = go.Figure(go.Indicator(
         mode="gauge+number",
         value=result["health"],
         title={'text': "Health Gauge"},
         gauge={'axis': {'range': [0, 100]}}
-    )), use_container_width=True)
+    ))
+    st.plotly_chart(gauge, use_container_width=True)
 
 elif module == "Disease Detection":
     uploaded_file = st.file_uploader("Upload leaf image", type=["jpg", "jpeg", "png"])
     result = engine.disease(uploaded_file is not None)
+
     st.metric("Predicted Disease", result["label"], f"{result['confidence']}% confidence")
-    pdf = pd.DataFrame({"Class": list(result["probabilities"].keys()), "Probability": list(result["probabilities"].values())})
-    st.plotly_chart(px.bar(pdf, x="Class", y="Probability", color="Probability", title="Disease Confidence"), use_container_width=True)
+
+    pdf = pd.DataFrame({
+        "Class": list(result["probabilities"].keys()),
+        "Probability": list(result["probabilities"].values())
+    })
+    st.plotly_chart(
+        px.bar(pdf, x="Class", y="Probability", color="Probability", title="Disease Confidence"),
+        use_container_width=True
+    )
 
 elif module == "Weather Auto":
     st.subheader("Auto Weather Integration")
+
     if weather:
-        wdf = pd.DataFrame({"Metric": ["Temperature", "Humidity", "Rainfall"], "Value": [weather["temperature"], weather["humidity"], weather["rainfall"]]})
-        st.success(f"Weather loaded for {district}")
-        st.plotly_chart(px.bar(wdf, x="Metric", y="Value", color="Metric", title="Current Weather"), use_container_width=True)
+        st.success(f"Live weather loaded for {weather['city']}")
+        wdf = pd.DataFrame({
+            "Metric": ["Temperature", "Humidity", "Rainfall"],
+            "Value": [weather["temperature"], weather["humidity"], weather["rainfall"]]
+        })
+        st.plotly_chart(
+            px.bar(
+                wdf,
+                x="Metric",
+                y="Value",
+                color="Metric",
+                title="Current Weather"
+            ),
+            use_container_width=True
+        )
+
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Temperature", f"{weather['temperature']} °C")
+        c2.metric("Humidity", f"{weather['humidity']} %")
+        c3.metric("Rainfall", f"{weather['rainfall']} mm")
+
     else:
-        st.warning("OpenWeather API key missing or weather unavailable.")
+        st.warning("Live weather is unavailable right now. You can still use manual inputs from the sidebar.")
+        manual_df = pd.DataFrame({
+            "Metric": ["Temperature", "Humidity", "Rainfall"],
+            "Value": [temperature, humidity, rainfall]
+        })
+        st.plotly_chart(
+            px.bar(
+                manual_df,
+                x="Metric",
+                y="Value",
+                color="Metric",
+                title="Manual Weather Inputs"
+            ),
+            use_container_width=True
+        )
+
+        with st.expander("Weather debug details"):
+            st.json(weather_debug)
 
 elif module == "Model Performance":
     st.subheader("ML and DL Accuracy Dashboard")
@@ -427,13 +641,29 @@ elif module == "Model Performance":
 
     cls_df = metrics_df[metrics_df["Type"] == "classification"].fillna(0)
     if not cls_df.empty:
-        long_cls = cls_df.melt(id_vars=["Module", "Type"], value_vars=["accuracy", "precision", "recall", "f1"], var_name="Metric", value_name="Score")
-        st.plotly_chart(px.bar(long_cls, x="Module", y="Score", color="Metric", barmode="group", title="Classification Metrics"), use_container_width=True)
+        long_cls = cls_df.melt(
+            id_vars=["Module", "Type"],
+            value_vars=["accuracy", "precision", "recall", "f1"],
+            var_name="Metric",
+            value_name="Score"
+        )
+        st.plotly_chart(
+            px.bar(long_cls, x="Module", y="Score", color="Metric", barmode="group", title="Classification Metrics"),
+            use_container_width=True
+        )
 
     reg_df = metrics_df[metrics_df["Type"] == "regression"].fillna(0)
     if not reg_df.empty:
-        long_reg = reg_df.melt(id_vars=["Module", "Type"], value_vars=["mae", "rmse", "r2"], var_name="Metric", value_name="Score")
-        st.plotly_chart(px.bar(long_reg, x="Module", y="Score", color="Metric", barmode="group", title="Regression Metrics"), use_container_width=True)
+        long_reg = reg_df.melt(
+            id_vars=["Module", "Type"],
+            value_vars=["mae", "rmse", "r2"],
+            var_name="Metric",
+            value_name="Score"
+        )
+        st.plotly_chart(
+            px.bar(long_reg, x="Module", y="Score", color="Metric", barmode="group", title="Regression Metrics"),
+            use_container_width=True
+        )
 
     st.info("Replace demo metrics with your actual trained model evaluation results from notebooks or saved reports.")
 
@@ -460,8 +690,21 @@ elif module == "Reports Download":
     csv_bytes = csv_df.to_csv(index=False).encode("utf-8")
     pdf_buffer = build_pdf_report(lines)
 
-    st.download_button("Download Final Report CSV", data=csv_bytes, file_name="final_farm_report.csv", mime="text/csv", use_container_width=True)
-    st.download_button("Download Final Report PDF", data=pdf_buffer, file_name="final_farm_report.pdf", mime="application/pdf", use_container_width=True)
+    st.download_button(
+        "Download Final Report CSV",
+        data=csv_bytes,
+        file_name="final_farm_report.csv",
+        mime="text/csv",
+        use_container_width=True
+    )
+
+    st.download_button(
+        "Download Final Report PDF",
+        data=pdf_buffer,
+        file_name="final_farm_report.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
 
 elif module == "AI Assistant":
     st.subheader("Agri AI Assistant with Memory")
@@ -470,19 +713,24 @@ elif module == "AI Assistant":
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
 
-    user_prompt = st.chat_input("Ask anything about crop, disease, irrigation, yield, weather, or fertilizer...")
+    user_prompt = st.chat_input("Ask about crop, disease, irrigation, yield, weather, or fertilizer...")
+
     if user_prompt:
         st.session_state.chat_history.append({"role": "user", "content": user_prompt})
+
         with st.chat_message("user"):
             st.markdown(user_prompt)
 
+        reply = get_ai_reply(user_prompt, all_result)
+
         with st.chat_message("assistant"):
-            reply = get_ai_reply(user_prompt, st.session_state.latest_result)
             st.markdown(reply)
-            st.session_state.chat_history.append({"role": "assistant", "content": reply})
+
+        st.session_state.chat_history.append({"role": "assistant", "content": reply})
+
 
 st.markdown("---")
 st.markdown(
-    "<div class='small'>Agri Vision AI – Telangana Edition | All modules integrated | Reports + plots + AI + performance metrics</div>",
+    "<div class='footer'>Agri Vision AI – Telangana Edition | All modules integrated | Reports + plots + AI + performance metrics</div>",
     unsafe_allow_html=True
 )
