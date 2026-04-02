@@ -1,6 +1,4 @@
 import os
-from pathlib import Path
-import requests
 import numpy as np
 import pandas as pd
 import plotly.express as px
@@ -12,10 +10,9 @@ from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
 from sklearn.preprocessing import LabelEncoder
 
 # =========================
-# API KEYS
+# API KEY
 # =========================
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
-OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "YOUR_OPENWEATHER_API_KEY")
 
 # =========================
 # PAGE CONFIG
@@ -32,22 +29,115 @@ st.set_page_config(
 # =========================
 st.markdown("""
 <style>
-.main {background: linear-gradient(135deg, #0f1f0f 0%, #1a2f1a 100%);}
+.main {background: linear-gradient(135deg, #020617 0%, #071226 45%, #0b1120 100%);}
 .block-container {padding-top: 1rem; padding-bottom: 1rem;}
-[data-testid="stSidebar"] {background: linear-gradient(180deg, #14532d 0%, #166534 50%, #14532d 100%);}
+[data-testid="stAppViewContainer"] {background: linear-gradient(135deg, #020617 0%, #071226 45%, #0b1120 100%);}
+[data-testid="stHeader"] {background: rgba(0,0,0,0);}
+[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #14532d 0%, #166534 50%, #14532d 100%);
+}
 [data-testid="stSidebar"] * {color: white !important;}
-.hero-dashboard {background: linear-gradient(90deg, #166534, #22c55e, #16a34a); color: white; padding: 1.8rem 1.5rem; border-radius: 24px; box-shadow: 0 12px 32px rgba(22, 101, 52, 0.3); margin-bottom: 1.5rem;}
-.metric-card {background: rgba(255,255,255,0.97); border-radius: 20px; padding: 1.4rem; text-align: center; border: 1px solid #dcfce7; box-shadow: 0 8px 24px rgba(0,0,0,0.12);}
-.health-card {background: linear-gradient(135deg, #f0fdf4, #dcfce7); border-left: 6px solid #16a34a; border-radius: 20px; padding: 1.4rem; box-shadow: 0 8px 24px rgba(22,101,52,0.15);}
-.chat-toolbar {background: rgba(255,255,255,0.96); border-radius: 16px; padding: 1rem 1.2rem; border: 1px solid #dcfce7; margin-bottom: 1rem; color: #14532d;}
+
+.hero-dashboard {
+    background: linear-gradient(90deg, #166534, #22c55e, #16a34a);
+    color: white;
+    padding: 1.8rem 1.5rem;
+    border-radius: 24px;
+    box-shadow: 0 12px 32px rgba(34, 197, 94, 0.18);
+    margin-bottom: 1.5rem;
+}
+
+.metric-card {
+    background: linear-gradient(135deg, #111827 0%, #172033 100%);
+    border-radius: 20px;
+    padding: 1.4rem;
+    text-align: center;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    box-shadow: 0 10px 28px rgba(0,0,0,0.35);
+    color: #e5e7eb;
+}
+
+.health-card {
+    background: linear-gradient(135deg, #0f172a 0%, #162235 100%);
+    border-left: 6px solid #22c55e;
+    border-radius: 20px;
+    padding: 1.4rem;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.35);
+    color: #e5e7eb;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.chat-toolbar {
+    background: linear-gradient(135deg, #0f172a 0%, #162235 100%);
+    border-radius: 16px;
+    padding: 1rem 1.2rem;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    margin-bottom: 1rem;
+    color: #d1fae5;
+}
+
 .farm-title {font-size: 2.35rem; font-weight: 800; margin: 0;}
 .subtitle {margin: 0.4rem 0 0 0; font-size: 1.05rem; opacity: 0.96;}
-.small-muted {color: #64748b; font-size: 0.9rem;}
-.badge-good {background: #dcfce7; color: #166534; padding: 0.35rem 0.75rem; border-radius: 999px; font-size: 0.8rem; font-weight: 700;}
-.alert-high {background:#fee2e2;color:#991b1b;padding:12px 16px;border-radius:14px;margin-bottom:10px;font-weight:600;}
-.alert-med {background:#fef3c7;color:#92400e;padding:12px 16px;border-radius:14px;margin-bottom:10px;font-weight:600;}
-.alert-good {background:#dcfce7;color:#166534;padding:12px 16px;border-radius:14px;margin-bottom:10px;font-weight:600;}
-.wow-box {background: linear-gradient(135deg, #ecfccb, #dcfce7); border: 1px solid #bbf7d0; color: #14532d; padding: 16px; border-radius: 18px; font-weight: 600;}
+.small-muted {color: #94a3b8; font-size: 0.9rem;}
+.badge-good {
+    background: #dcfce7;
+    color: #166534;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+.alert-high {
+    background: linear-gradient(135deg, #3b0a0a, #7f1d1d);
+    color: #fecaca;
+    padding: 12px 16px;
+    border-radius: 14px;
+    margin-bottom: 10px;
+    font-weight: 600;
+    border: 1px solid rgba(248, 113, 113, 0.25);
+}
+.alert-med {
+    background: linear-gradient(135deg, #3b2a09, #78350f);
+    color: #fde68a;
+    padding: 12px 16px;
+    border-radius: 14px;
+    margin-bottom: 10px;
+    font-weight: 600;
+    border: 1px solid rgba(251, 191, 36, 0.25);
+}
+.alert-good {
+    background: linear-gradient(135deg, #052e16, #14532d);
+    color: #bbf7d0;
+    padding: 12px 16px;
+    border-radius: 14px;
+    margin-bottom: 10px;
+    font-weight: 600;
+    border: 1px solid rgba(74, 222, 128, 0.25);
+}
+.wow-box {
+    background: linear-gradient(135deg, #0f172a, #132a13);
+    border: 1px solid rgba(74, 222, 128, 0.18);
+    color: #dcfce7;
+    padding: 16px;
+    border-radius: 18px;
+    font-weight: 600;
+}
+div[data-testid="stMetric"] {
+    background: linear-gradient(135deg, #111827 0%, #172033 100%);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    padding: 16px;
+    border-radius: 18px;
+    box-shadow: 0 10px 28px rgba(0,0,0,0.28);
+}
+div[data-testid="stMetricLabel"] {color: #94a3b8 !important;}
+div[data-testid="stMetricValue"] {color: #f8fafc !important;}
+div[data-testid="stMetricDelta"] {color: #22c55e !important;}
+.stDataFrame, .stTable {
+    background: #0f172a !important;
+}
+h1, h2, h3, h4, h5, h6, p, label, div, span {
+    color: #f8fafc;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -69,8 +159,38 @@ if "season" not in st.session_state:
 if "multi_crop_df" not in st.session_state:
     st.session_state.multi_crop_df = None
 
-if "weather_cache" not in st.session_state:
-    st.session_state.weather_cache = None
+# =========================
+# PLOTLY THEME
+# =========================
+def apply_dark_plotly(fig, title=None):
+    fig.update_layout(
+        template=None,
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="#0f172a",
+        font=dict(color="#e5e7eb"),
+        title_font=dict(color="#f8fafc", size=22),
+        legend=dict(font=dict(color="#e5e7eb")),
+        margin=dict(l=20, r=20, t=60, b=20)
+    )
+    fig.update_xaxes(
+        showgrid=True,
+        gridcolor="rgba(148,163,184,0.15)",
+        zeroline=False,
+        linecolor="rgba(148,163,184,0.25)",
+        tickfont=dict(color="#cbd5e1"),
+        title_font=dict(color="#e5e7eb")
+    )
+    fig.update_yaxes(
+        showgrid=True,
+        gridcolor="rgba(148,163,184,0.15)",
+        zeroline=False,
+        linecolor="rgba(148,163,184,0.25)",
+        tickfont=dict(color="#cbd5e1"),
+        title_font=dict(color="#e5e7eb")
+    )
+    if title:
+        fig.update_layout(title=title)
+    return fig
 
 # =========================
 # REAL ML LAYER
@@ -85,26 +205,26 @@ def train_ml_models():
     ]
 
     crop_profiles = {
-        "Rice":      [80, 40, 40, 28, 80, 6.5, 180],
-        "Cotton":    [70, 35, 50, 30, 60, 7.0, 90],
-        "Maize":     [85, 45, 40, 27, 65, 6.7, 110],
-        "Wheat":     [65, 35, 35, 22, 55, 6.8, 60],
+        "Rice": [80, 40, 40, 28, 80, 6.5, 180],
+        "Cotton": [70, 35, 50, 30, 60, 7.0, 90],
+        "Maize": [85, 45, 40, 27, 65, 6.7, 110],
+        "Wheat": [65, 35, 35, 22, 55, 6.8, 60],
         "Sugarcane": [90, 50, 55, 29, 70, 7.2, 160],
-        "Soybean":   [60, 40, 35, 26, 65, 6.5, 95],
+        "Soybean": [60, 40, 35, 26, 65, 6.5, 95],
         "Groundnut": [55, 35, 45, 28, 55, 6.6, 70],
-        "Chilli":    [75, 40, 45, 27, 58, 6.8, 65],
-        "Turmeric":  [70, 45, 50, 26, 75, 6.4, 140],
-        "Red Gram":  [45, 30, 35, 29, 55, 7.0, 75],
-        "Black Gram":[40, 28, 30, 28, 58, 6.9, 70],
-        "Green Gram":[42, 30, 32, 27, 60, 6.8, 68],
-        "Bengal Gram":[38, 26, 28, 24, 50, 7.1, 55],
-        "Sesame":    [35, 22, 28, 29, 50, 6.7, 50],
-        "Jowar":     [48, 28, 30, 30, 52, 7.2, 65],
-        "Bajra":     [45, 24, 26, 31, 48, 7.3, 45],
+        "Chilli": [75, 40, 45, 27, 58, 6.8, 65],
+        "Turmeric": [70, 45, 50, 26, 75, 6.4, 140],
+        "Red Gram": [45, 30, 35, 29, 55, 7.0, 75],
+        "Black Gram": [40, 28, 30, 28, 58, 6.9, 70],
+        "Green Gram": [42, 30, 32, 27, 60, 6.8, 68],
+        "Bengal Gram": [38, 26, 28, 24, 50, 7.1, 55],
+        "Sesame": [35, 22, 28, 29, 50, 6.7, 50],
+        "Jowar": [48, 28, 30, 30, 52, 7.2, 65],
+        "Bajra": [45, 24, 26, 31, 48, 7.3, 45],
         "Sunflower": [58, 34, 38, 27, 54, 6.9, 62],
-        "Castor":    [50, 30, 36, 30, 50, 7.4, 58],
-        "Paddy":     [82, 42, 40, 28, 82, 6.5, 185],
-        "Horse Gram":[30, 20, 22, 28, 46, 7.0, 40]
+        "Castor": [50, 30, 36, 30, 50, 7.4, 58],
+        "Paddy": [82, 42, 40, 28, 82, 6.5, 185],
+        "Horse Gram": [30, 20, 22, 28, 46, 7.0, 40]
     }
 
     X_crop = []
@@ -135,7 +255,6 @@ def train_ml_models():
 
     X_yield = []
     y_yield = []
-
     crop_factor_map = {crop: i + 1 for i, crop in enumerate(crop_names)}
 
     for crop in crop_names:
@@ -167,7 +286,6 @@ def train_ml_models():
 
     X_irr = []
     y_irr = []
-    irrigation_classes = ["Low", "Moderate", "High"]
 
     for _ in range(400):
         soil_m = np.random.uniform(10, 80)
@@ -202,7 +320,8 @@ def train_ml_models():
         "yield_model": yield_model,
         "irrigation_model": irrigation_model,
         "irrigation_encoder": irr_encoder,
-        "crop_factor_map": crop_factor_map
+        "crop_factor_map": crop_factor_map,
+        "all_crops": crop_names
     }
 
 ml_bundle = train_ml_models()
@@ -242,48 +361,6 @@ api_service = AgriAPIService(ml_bundle)
 # =========================
 # HELPERS
 # =========================
-def get_openweather_api_key():
-    try:
-        if "OPENWEATHER_API_KEY" in st.secrets:
-            return st.secrets["OPENWEATHER_API_KEY"]
-    except Exception:
-        pass
-    return OPENWEATHER_API_KEY
-
-def fetch_weather(city):
-    api_key = get_openweather_api_key()
-
-    if not api_key or api_key == "YOUR_OPENWEATHER_API_KEY":
-        return None
-
-    try:
-        url = "https://api.openweathermap.org/data/2.5/weather"
-        params = {"q": city, "appid": api_key, "units": "metric"}
-        response = requests.get(url, params=params, timeout=12)
-        if response.status_code == 200:
-            data = response.json()
-            return {
-                "temperature": float(data["main"]["temp"]),
-                "humidity": float(data["main"]["humidity"]),
-                "rainfall": float(data.get("rain", {}).get("1h", 0.0)),
-                "weather": data["weather"][0]["main"]
-            }
-        return None
-    except Exception:
-        return None
-
-def get_weather_data(city):
-    weather = fetch_weather(city)
-    if weather is None:
-        st.warning("Weather API not available. Using manual defaults.")
-        return {
-            "temperature": 29.0,
-            "humidity": 78.0,
-            "rainfall": 20.0,
-            "weather": "Default"
-        }
-    return weather
-
 def calculate_ndvi(red, nir):
     red = float(red)
     nir = float(nir)
@@ -315,8 +392,23 @@ def soil_radar_figure(n, p, k, moisture, ph):
         "Metric": ["Nitrogen", "Phosphorus", "Potassium", "Moisture", "pH x10"],
         "Value": [n, p, k, moisture, ph * 10]
     })
-    fig = px.line_polar(radar_df, r="Value", theta="Metric", line_close=True, title="Soil Radar Chart")
-    fig.update_traces(fill="toself")
+    fig = px.line_polar(
+        radar_df,
+        r="Value",
+        theta="Metric",
+        line_close=True,
+        title="Soil Radar Chart"
+    )
+    fig.update_traces(fill="toself", line_color="#22c55e")
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        polar=dict(
+            bgcolor="#0f172a",
+            radialaxis=dict(gridcolor="rgba(148,163,184,0.15)", tickfont=dict(color="#cbd5e1")),
+            angularaxis=dict(gridcolor="rgba(148,163,184,0.15)", tickfont=dict(color="#cbd5e1"))
+        ),
+        font=dict(color="#e5e7eb")
+    )
     return fig
 
 def smart_alerts(health, ndvi, n, p, k):
@@ -354,8 +446,7 @@ def generate_farm_report(farm_data, multi_crop_df=None):
 def wow_feature_box():
     st.markdown("""
     <div class="wow-box">
-    🚀 WOW FEATURE: Recruiter Mode — this app combines real weather integration, trained ML models, multi-crop comparison,
-    smart alerts, downloadable farm reports, and structured advisory flow in one agritech dashboard.
+    🚀 WOW FEATURE: Multi-crop comparison, trained ML prediction, smart alerts, visual analytics, and downloadable farm report in one dashboard.
     </div>
     """, unsafe_allow_html=True)
 
@@ -368,87 +459,95 @@ def chatbot_reply(question, farm_data):
 - No farm analysis data available yet.
 
 ### Why
-- The assistant becomes more accurate after Smart Advisor or Multi-Crop Analysis runs.
+- The assistant works better after Smart Advisor or Multi-Crop Analysis.
 
-### Immediate Action
+### Immediate action
 - Run Smart Advisor first.
+- Then ask about crop, yield, irrigation, NDVI, or fertilizer.
 
-### Next 3 Days
-- Track weather, NDVI, irrigation, and nutrient balance.
-""".strip()
+### Next 3 days
+- Collect soil and moisture readings.
+- Compare 2 to 5 crops in Multi-Crop Analysis.
+"""
 
-    if "best crop" in q:
+    if "yield" in q:
         return f"""
 ### Situation
-- Current recommended crop is {farm_data.get('crop')}.
+- Expected yield is {farm_data.get('yield')} t/ha.
 
 ### Why
-- This recommendation is based on trained crop classification using N, P, K, temperature, humidity, pH, and rainfall.
+- This estimate is based on current farm inputs and selected crop.
 
-### Immediate Action
-- Prioritize {farm_data.get('crop')} for the current farm condition.
+### Immediate action
+- Keep fertilizer and irrigation aligned with the recommended plan.
 
-### Next 3 Days
-- Monitor NDVI, soil moisture, and rainfall before final sowing.
-""".strip()
+### Next 3 days
+- Monitor moisture daily.
+- Recheck NDVI trend.
+- Avoid over-irrigation.
+"""
+    if "crop" in q:
+        return f"""
+### Situation
+- Recommended crop is {farm_data.get('crop')}.
 
-    if "irrigation" in q:
+### Why
+- The trained crop model matched your soil and climate inputs to the closest crop pattern.
+
+### Immediate action
+- Prepare seed and fertilizer planning for {farm_data.get('crop')}.
+
+### Next 3 days
+- Validate rainfall readiness.
+- Recheck soil pH.
+- Compare backup crops in Multi-Crop Analysis.
+"""
+    if "irrigation" in q or "water" in q:
         return f"""
 ### Situation
 - Irrigation level is {farm_data.get('irrigation')}.
 
 ### Why
-- The irrigation model uses soil moisture, temperature, humidity, pH, and rainfall.
+- The irrigation model used soil moisture, temperature, humidity, pH, and rainfall input.
 
-### Immediate Action
-- {farm_data.get('action')}.
+### Immediate action
+- {farm_data.get('action')}
 
-### Next 3 Days
-- Check rainfall updates and keep moisture above the safe threshold.
-""".strip()
-
-    if "fertilizer" in q:
-        return f"""
-### Situation
-- Current fertilizer advice is: {farm_data.get('fertilizer')}.
-
-### Why
-- Nutrient balance affects crop stress, yield, and canopy growth.
-
-### Immediate Action
-- Follow the fertilizer plan in split doses if needed.
-
-### Next 3 Days
-- Recheck soil nutrient values and compare with crop stage.
-""".strip()
-
+### Next 3 days
+- Check field moisture morning and evening.
+- Prevent waterlogging.
+- Track plant stress symptoms.
+"""
     return f"""
 ### Situation
-- District: {farm_data.get('district')}
-- Season: {farm_data.get('season')}
-- Recommended crop: {farm_data.get('crop')}
-- Yield: {farm_data.get('yield')} t/ha
-- NDVI: {farm_data.get('ndvi')}
-- Health: {farm_data.get('health')}%
+- Farm health score is {farm_data.get('health')}% and NDVI is {farm_data.get('ndvi')}.
 
 ### Why
-- The app combines weather, nutrient, and moisture conditions with trained ML predictions.
+- These values reflect current vegetation strength and field balance.
 
-### Immediate Action
-- Follow irrigation and fertilizer guidance.
+### Immediate action
+- Follow fertilizer advice: {farm_data.get('fertilizer')}
 
-### Next 3 Days
-- Track weather change, NDVI trend, and crop stress.
-
-### Your Question
-- {question}
-""".strip()
+### Next 3 days
+- Watch NDVI trend.
+- Recheck nutrient balance.
+- Download the farm report for tracking.
+"""
 
 def process_image(uploaded_file):
     image = Image.open(uploaded_file).convert("RGB")
     image = image.resize((224, 224))
     arr = np.array(image, dtype=np.float32)
     return image, arr
+
+def predict_disease(arr):
+    score = int(np.mean(arr)) % 4
+    labels = ["Healthy", "Leaf Blight", "Rust", "Leaf Spot"]
+    return {
+        "class_index": score,
+        "class_name": labels[score],
+        "confidence": 0.88
+    }
 
 def render_header():
     st.markdown(
@@ -457,7 +556,7 @@ def render_header():
             <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;'>
                 <div>
                     <h1 class="farm-title">AgriVision AI</h1>
-                    <p class="subtitle">Farm Health AI + Real ML + Weather + Smart Alerts</p>
+                    <p class="subtitle">Farm Health AI</p>
                 </div>
                 <div style='text-align:right;'>
                     <div><span class="badge-good">Telangana Edition</span></div>
@@ -472,13 +571,13 @@ def render_header():
 def render_top_dashboard():
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.markdown("<div class='metric-card'><div class='small-muted'>Overall Health</div><h2 style='color:#16a34a;'>87.4%</h2><div class='small-muted'>+3.2% this week</div></div>", unsafe_allow_html=True)
+        st.markdown("<div class='metric-card'><div class='small-muted'>Overall Health</div><h2 style='color:#22c55e;'>87.4%</h2><div class='small-muted'>+3.2% this week</div></div>", unsafe_allow_html=True)
     with c2:
-        st.markdown("<div class='metric-card'><div class='small-muted'>Active Alerts</div><h2 style='color:#dc2626;'>4</h2><div class='small-muted'>2 critical zones</div></div>", unsafe_allow_html=True)
+        st.markdown("<div class='metric-card'><div class='small-muted'>Active Alerts</div><h2 style='color:#f87171;'>4</h2><div class='small-muted'>2 critical zones</div></div>", unsafe_allow_html=True)
     with c3:
-        st.markdown("<div class='metric-card'><div class='small-muted'>Yield Forecast</div><h2 style='color:#166534;'>4.2 t/ha</h2><div class='small-muted'>AI powered</div></div>", unsafe_allow_html=True)
+        st.markdown("<div class='metric-card'><div class='small-muted'>Yield Forecast</div><h2 style='color:#86efac;'>4.2 t/ha</h2><div class='small-muted'>On target</div></div>", unsafe_allow_html=True)
     with c4:
-        st.markdown("<div class='metric-card'><div class='small-muted'>Weather Feed</div><h2 style='color:#2563eb;'>Live/API</h2><div class='small-muted'>Fallback safe</div></div>", unsafe_allow_html=True)
+        st.markdown("<div class='metric-card'><div class='small-muted'>Soil Moisture</div><h2 style='color:#60a5fa;'>62%</h2><div class='small-muted'>Optimal</div></div>", unsafe_allow_html=True)
 
 # =========================
 # SIDEBAR
@@ -505,21 +604,15 @@ st.sidebar.markdown("### Telangana Filters")
 st.session_state.district = st.sidebar.selectbox(
     "District",
     [
-        "Hyderabad", "Adilabad", "Bhadradri Kothagudem", "Hanamkonda", "Jagtial",
-        "Jangaon", "Jayashankar Bhupalpally", "Jogulamba Gadwal", "Kamareddy",
-        "Karimnagar", "Khammam", "Komaram Bheem Asifabad", "Mahabubabad",
-        "Mahabubnagar", "Mancherial", "Medak", "Medchal-Malkajgiri", "Mulugu",
-        "Nagarkurnool", "Nalgonda", "Narayanpet", "Nirmal", "Nizamabad",
-        "Peddapalli", "Rajanna Sircilla", "Ranga Reddy", "Sangareddy",
-        "Siddipet", "Suryapet", "Vikarabad", "Wanaparthy", "Warangal",
-        "Yadadri Bhuvanagiri"
+        "Hyderabad", "Ranga Reddy", "Medchal", "Sangareddy", "Mahabubnagar",
+        "Warangal", "Karimnagar", "Nizamabad", "Khammam", "Nalgonda",
+        "Jayashankar Bhupalpally"
     ]
 )
 st.session_state.season = st.sidebar.selectbox("Season", ["Kharif", "Rabi"])
 
 render_header()
 render_top_dashboard()
-wow_feature_box()
 
 # =========================
 # PAGES
@@ -539,33 +632,40 @@ if page == "Dashboard":
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        fig_line = px.line(trend_df, x="Day", y="Health Index", title="Crop Health Trend - 30 Days")
-        fig_line.update_traces(line=dict(color="#16a34a", width=4))
-        fig_line.update_layout(height=360, template="plotly_white")
-        st.plotly_chart(fig_line, use_container_width=True)
+        fig_line = px.line(
+            trend_df,
+            x="Day",
+            y="Health Index",
+            title="Crop Health Trend - 30 Days"
+        )
+        fig_line.update_traces(line=dict(color="#22c55e", width=4))
+        fig_line = apply_dark_plotly(fig_line)
+        st.plotly_chart(fig_line, use_container_width=True, theme=None)
 
     with col2:
-        fig_pie = px.pie(zone_df, names="Zone", values="Value", hole=0.55, title="Zone Distribution")
-        fig_pie.update_layout(height=360, template="plotly_white")
-        st.plotly_chart(fig_pie, use_container_width=True)
-
-    heatmap_df = pd.DataFrame({
-        "Zone": ["Zone A", "Zone B", "Zone C", "Zone D"],
-        "NDVI": [0.71, 0.54, 0.39, 0.62],
-        "Moisture": [48, 36, 22, 43]
-    })
-    st.plotly_chart(px.scatter(
-        heatmap_df, x="NDVI", y="Moisture", color="Zone", size="Moisture",
-        title="Zone-wise NDVI vs Soil Moisture"
-    ), use_container_width=True)
+        fig_pie = px.pie(
+            zone_df,
+            names="Zone",
+            values="Value",
+            hole=0.55,
+            title="Zone Distribution",
+            color="Zone",
+            color_discrete_map={
+                "Healthy": "#22c55e",
+                "Moderate": "#f59e0b",
+                "High Risk": "#f97316",
+                "Critical": "#ef4444"
+            }
+        )
+        fig_pie.update_layout(
+            paper_bgcolor="rgba(0,0,0,0)",
+            plot_bgcolor="#0f172a",
+            font=dict(color="#e5e7eb")
+        )
+        st.plotly_chart(fig_pie, use_container_width=True, theme=None)
 
 elif page == "Smart Advisor":
     st.markdown("## Smart Farm Advisor")
-
-    weather_data = get_weather_data(st.session_state.district)
-    temp = weather_data["temperature"]
-    humidity = weather_data["humidity"]
-    rainfall = weather_data["rainfall"]
 
     a, b, c = st.columns(3)
 
@@ -576,9 +676,9 @@ elif page == "Smart Advisor":
         ph = st.number_input("Soil pH", value=6.7)
 
     with b:
-        st.number_input("Temperature (°C)", value=float(temp), disabled=True)
-        st.number_input("Humidity (%)", value=float(humidity), disabled=True)
-        st.number_input("Rainfall (mm)", value=float(rainfall), disabled=True)
+        temp = st.number_input("Temperature (°C)", value=29.0)
+        humidity = st.number_input("Humidity (%)", value=78.0)
+        rainfall = st.number_input("Rainfall (mm)", value=180.0)
 
     with c:
         moisture = st.number_input("Soil Moisture (%)", value=42.0)
@@ -611,7 +711,7 @@ elif page == "Smart Advisor":
         x3.metric("Yield", f"{yield_pred} t/ha", "Real ML prediction")
 
         st.markdown(
-            f"<div class='health-card'><h3>Final Farm Decision</h3>"
+            f"<div class='health-card'><h3 style='color:#f8fafc;'>Final Farm Decision</h3>"
             f"<p><strong>Recommended crop:</strong> {crop}</p>"
             f"<p><strong>Irrigation:</strong> {irrigation} - {action}</p>"
             f"<p><strong>Fertilizer:</strong> {fert}</p>"
@@ -621,214 +721,185 @@ elif page == "Smart Advisor":
         )
 
         st.markdown("### Smart Alerts")
-        for alert_type, alert_text in smart_alerts(health, ndvi, n, p, k):
-            if alert_type == "high":
-                st.markdown(f"<div class='alert-high'>{alert_text}</div>", unsafe_allow_html=True)
-            elif alert_type == "med":
-                st.markdown(f"<div class='alert-med'>{alert_text}</div>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<div class='alert-good'>{alert_text}</div>", unsafe_allow_html=True)
+        for level, text in smart_alerts(health, ndvi, n, p, k):
+            css = "alert-high" if level == "high" else "alert-med" if level == "med" else "alert-good"
+            st.markdown(f"<div class='{css}'>{text}</div>", unsafe_allow_html=True)
 
-        st.markdown("### Advanced Visualization")
-        ndvi_trend_df = generate_ndvi_trend(ndvi)
-        st.plotly_chart(px.line(ndvi_trend_df, x="Day", y="NDVI", markers=True, title="NDVI Trend Chart"), use_container_width=True)
+        d1, d2 = st.columns(2)
 
-        st.plotly_chart(soil_radar_figure(n, p, k, moisture, ph), use_container_width=True)
+        with d1:
+            ndvi_df = generate_ndvi_trend(ndvi)
+            fig_ndvi = px.line(ndvi_df, x="Day", y="NDVI", title="NDVI Trend")
+            fig_ndvi.update_traces(line=dict(color="#38bdf8", width=4))
+            fig_ndvi = apply_dark_plotly(fig_ndvi)
+            st.plotly_chart(fig_ndvi, use_container_width=True, theme=None)
+
+        with d2:
+            radar_fig = soil_radar_figure(n, p, k, moisture, ph)
+            st.plotly_chart(radar_fig, use_container_width=True, theme=None)
 
         report_text = generate_farm_report(st.session_state.latest_farm_data, st.session_state.multi_crop_df)
-        st.download_button("Download Farm Report", data=report_text, file_name="farm_report.txt", mime="text/plain")
+        st.download_button(
+            "Download Farm Report",
+            data=report_text,
+            file_name="farm_report.txt",
+            mime="text/plain",
+            use_container_width=True
+        )
+
+        wow_feature_box()
 
 elif page == "Multi-Crop Analysis":
-    st.subheader("🌾 Multi-Crop Analysis - Telangana Crops")
+    st.markdown("## Multi-Crop Analysis")
 
-    weather_data = get_weather_data(st.session_state.district)
-    temp = weather_data["temperature"]
-    humidity = weather_data["humidity"]
-    rainfall = weather_data["rainfall"]
+    all_telangana_crops = ml_bundle["all_crops"]
 
-    telangana_crops = [
-        "Rice", "Cotton", "Maize", "Wheat", "Sugarcane", "Soybean", "Groundnut",
-        "Chilli", "Turmeric", "Red Gram", "Black Gram", "Green Gram",
-        "Bengal Gram", "Sesame", "Jowar", "Bajra", "Sunflower",
-        "Castor", "Paddy", "Horse Gram"
-    ]
-
-    c1, c2, c3 = st.columns(3)
-    with c1:
+    col1, col2, col3 = st.columns(3)
+    with col1:
         n = st.number_input("Nitrogen (N)", value=80.0, key="mc_n")
-        p = st.number_input("Phosphorus (P)", value=40.0, key="mc_p")
-        k = st.number_input("Potassium (K)", value=40.0, key="mc_k")
-    with c2:
+        p = st.number_input("Phosphorus (P)", value=38.0, key="mc_p")
+        k = st.number_input("Potassium (K)", value=42.0, key="mc_k")
+    with col2:
         ph = st.number_input("Soil pH", value=6.8, key="mc_ph")
-        moisture = st.number_input("Soil Moisture (%)", value=42.0, key="mc_m")
-    with c3:
-        st.number_input("Temperature (°C)", value=float(temp), disabled=True, key="mc_t")
-        st.number_input("Humidity (%)", value=float(humidity), disabled=True, key="mc_h")
-        st.number_input("Rainfall (mm)", value=float(rainfall), disabled=True, key="mc_r")
+        temp = st.number_input("Temperature (°C)", value=28.0, key="mc_temp")
+        humidity = st.number_input("Humidity (%)", value=72.0, key="mc_humidity")
+    with col3:
+        rainfall = st.number_input("Rainfall (mm)", value=95.0, key="mc_rain")
+        moisture = st.number_input("Soil Moisture (%)", value=44.0, key="mc_moisture")
+        selected_crops = st.multiselect(
+            "Multi Selected Crops of All Telangana Crops",
+            all_telangana_crops,
+            default=["Rice", "Cotton", "Maize", "Chilli"]
+        )
 
-    selected_crops = st.multiselect(
-        "Select multiple Telangana crops",
-        telangana_crops,
-        default=["Rice", "Cotton", "Maize"]
-    )
-
-    if selected_crops:
-        results = []
-        for crop in selected_crops:
-            yield_pred = api_service.predict_yield(ph, temp, rainfall, n, humidity, moisture, crop)
-            risk = "High" if yield_pred < 3 else ("Moderate" if yield_pred < 5 else "Low")
-            suitability_score = round(min(99, max(40, (yield_pred * 12))), 1)
-            results.append({
-                "Crop": crop,
-                "Predicted Yield": yield_pred,
-                "Risk": risk,
-                "Suitability Score": suitability_score,
-                "Temperature": temp,
-                "Humidity": humidity,
-                "Rainfall": rainfall
+    if st.button("Compare Selected Crops", use_container_width=True):
+        rows = []
+        for crop_name in selected_crops:
+            pred_yield = api_service.predict_yield(ph, temp, rainfall, n, humidity, moisture, crop_name)
+            suitability = round(
+                max(50, min(99, 100 - abs(ph - 6.8) * 8 - abs(temp - 28) * 1.2 + (humidity * 0.08))),
+                2
+            )
+            risk = "Low" if pred_yield >= 6 else "Moderate" if pred_yield >= 4 else "High"
+            rows.append({
+                "Crop": crop_name,
+                "Predicted Yield (t/ha)": pred_yield,
+                "Suitability Score": suitability,
+                "Risk": risk
             })
 
-        df = pd.DataFrame(results)
+        df = pd.DataFrame(rows).sort_values(by="Predicted Yield (t/ha)", ascending=False)
         st.session_state.multi_crop_df = df
 
-        st.dataframe(df, use_container_width=True)
+        st.dataframe(df, use_container_width=True, hide_index=True)
 
-        best_crop = df.sort_values("Predicted Yield", ascending=False).iloc[0]
-        st.success(f"🏆 Best Crop: {best_crop['Crop']} with {best_crop['Predicted Yield']} t/ha")
+        best_crop = df.iloc[0]["Crop"]
+        best_yield = df.iloc[0]["Predicted Yield (t/ha)"]
+        st.success(f"Best crop: {best_crop} with predicted yield {best_yield} t/ha")
 
-        cols = st.columns(len(selected_crops))
-        for i, crop in enumerate(selected_crops):
-            cols[i].metric(
-                label=crop,
-                value=f"{df.iloc[i]['Predicted Yield']} t/ha",
-                delta=df.iloc[i]['Risk']
+        c1, c2 = st.columns(2)
+
+        with c1:
+            fig_bar = px.bar(
+                df,
+                x="Crop",
+                y="Predicted Yield (t/ha)",
+                color="Predicted Yield (t/ha)",
+                title="Yield Comparison Across Selected Crops",
+                color_continuous_scale="Greens"
             )
+            fig_bar = apply_dark_plotly(fig_bar)
+            st.plotly_chart(fig_bar, use_container_width=True, theme=None)
 
-        st.markdown("### Advanced Visualization")
-
-        fig_yield = px.bar(
-            df,
-            x="Crop",
-            y="Predicted Yield",
-            color="Risk",
-            title="Yield Comparison Graph"
-        )
-        st.plotly_chart(fig_yield, use_container_width=True)
-
-        fig_scatter = px.scatter(
-            df,
-            x="Suitability Score",
-            y="Predicted Yield",
-            color="Risk",
-            size="Predicted Yield",
-            hover_name="Crop",
-            title="Suitability vs Yield Plot"
-        )
-        st.plotly_chart(fig_scatter, use_container_width=True)
-
-        fig_line = px.line(
-            df.sort_values("Predicted Yield", ascending=False),
-            x="Crop",
-            y="Predicted Yield",
-            markers=True,
-            title="Yield Ranking Trend"
-        )
-        st.plotly_chart(fig_line, use_container_width=True)
-
-        report_text = generate_farm_report(st.session_state.latest_farm_data, df)
-        st.download_button("Download Farm Report", data=report_text, file_name="multi_crop_farm_report.txt", mime="text/plain")
+        with c2:
+            fig_scatter = px.scatter(
+                df,
+                x="Suitability Score",
+                y="Predicted Yield (t/ha)",
+                color="Risk",
+                size="Suitability Score",
+                hover_name="Crop",
+                title="Suitability vs Yield"
+            )
+            fig_scatter = apply_dark_plotly(fig_scatter)
+            st.plotly_chart(fig_scatter, use_container_width=True, theme=None)
 
 elif page == "Crop Recommendation":
-    st.markdown("## Crop Recommendation")
-    weather_data = get_weather_data(st.session_state.district)
-
-    n = st.number_input("Nitrogen (N)", value=80.0, key="cr_n")
-    p = st.number_input("Phosphorus (P)", value=40.0, key="cr_p")
-    k = st.number_input("Potassium (K)", value=40.0, key="cr_k")
-    ph = st.number_input("Soil pH", value=6.8, key="cr_ph")
-    st.number_input("Temperature (°C)", value=float(weather_data["temperature"]), disabled=True, key="cr_t")
-    st.number_input("Humidity (%)", value=float(weather_data["humidity"]), disabled=True, key="cr_h")
-    st.number_input("Rainfall (mm)", value=float(weather_data["rainfall"]), disabled=True, key="cr_r")
+    vals = [st.number_input(f"Feature {i+1}", value=float(80 + i)) for i in range(7)]
 
     if st.button("Recommend Crop", use_container_width=True):
-        crop, conf = api_service.recommend_crop([n, p, k, weather_data["temperature"], weather_data["humidity"], ph, weather_data["rainfall"]])
+        crop, conf = api_service.recommend_crop(vals)
         st.success(f"Recommended crop: {crop} ({conf}% confidence)")
 
 elif page == "Yield Prediction":
-    st.markdown("## Yield Prediction")
-    weather_data = get_weather_data(st.session_state.district)
-
     ph = st.number_input("Soil pH", value=6.8, key="yp_ph")
-    fertilizer = st.number_input("Fertilizer Input", value=80.0, key="yp_f")
-    soil_moisture = st.number_input("Soil Moisture", value=42.0, key="yp_sm")
-    crop_name = st.selectbox("Crop", [
-        "Rice", "Cotton", "Maize", "Wheat", "Sugarcane", "Soybean", "Groundnut",
-        "Chilli", "Turmeric", "Red Gram", "Black Gram", "Green Gram",
-        "Bengal Gram", "Sesame", "Jowar", "Bajra", "Sunflower",
-        "Castor", "Paddy", "Horse Gram"
-    ])
+    temp = st.number_input("Temperature", value=28.0, key="yp_temp")
+    rainfall = st.number_input("Rainfall", value=90.0, key="yp_rain")
+    fertilizer = st.number_input("Fertilizer Input", value=85.0, key="yp_fert")
+    humidity = st.number_input("Humidity", value=70.0, key="yp_hum")
+    moisture = st.number_input("Soil Moisture", value=44.0, key="yp_moi")
+    crop_name = st.selectbox("Crop", ml_bundle["all_crops"], index=0)
 
     if st.button("Predict Yield", use_container_width=True):
-        y = api_service.predict_yield(
-            ph,
-            weather_data["temperature"],
-            weather_data["rainfall"],
-            fertilizer,
-            weather_data["humidity"],
-            soil_moisture,
-            crop_name
-        )
-        st.metric("Expected Yield", f"{y} t/ha", "RandomForest prediction")
+        y = api_service.predict_yield(ph, temp, rainfall, fertilizer, humidity, moisture, crop_name)
+        st.metric("Expected Yield", f"{y} t/ha", "Real ML prediction")
 
-        chart_df = pd.DataFrame({
-            "Feature": ["Temperature", "Humidity", "Rainfall", "Soil Moisture", "Fertilizer"],
-            "Value": [weather_data["temperature"], weather_data["humidity"], weather_data["rainfall"], soil_moisture, fertilizer]
+        pred_df = pd.DataFrame({
+            "Metric": ["pH", "Temp", "Rainfall", "Fertilizer", "Humidity", "Moisture"],
+            "Value": [ph, temp, rainfall, fertilizer, humidity, moisture]
         })
-        st.plotly_chart(px.bar(chart_df, x="Feature", y="Value", color="Feature", title="Yield Input Feature Chart"), use_container_width=True)
+        fig = px.bar(pred_df, x="Metric", y="Value", color="Metric", title="Yield Input Profile")
+        fig = apply_dark_plotly(fig)
+        st.plotly_chart(fig, use_container_width=True, theme=None)
 
 elif page == "Irrigation":
-    st.markdown("## Irrigation Planning")
-    weather_data = get_weather_data(st.session_state.district)
-
-    moisture = st.number_input("Soil Moisture (%)", value=42.0, key="ir_m")
-    ph = st.number_input("Soil pH", value=6.8, key="ir_ph")
+    soil_m = st.number_input("Soil Moisture", value=40.0)
+    temp = st.number_input("Temperature", value=29.0)
+    humidity = st.number_input("Humidity", value=75.0)
+    ph = st.number_input("pH", value=6.9)
+    rainfall = st.number_input("Rainfall", value=60.0)
 
     if st.button("Get Irrigation Plan", use_container_width=True):
-        result, action = api_service.predict_irrigation(
-            moisture,
-            weather_data["temperature"],
-            weather_data["humidity"],
-            ph,
-            weather_data["rainfall"]
-        )
+        result, action = api_service.predict_irrigation(soil_m, temp, humidity, ph, rainfall)
         st.info(f"Need: {result} | Action: {action}")
 
         irr_df = pd.DataFrame({
-            "Metric": ["Soil Moisture", "Temperature", "Humidity", "Rainfall"],
-            "Value": [moisture, weather_data["temperature"], weather_data["humidity"], weather_data["rainfall"]]
+            "Parameter": ["Soil Moisture", "Temperature", "Humidity", "pH", "Rainfall"],
+            "Value": [soil_m, temp, humidity, ph, rainfall]
         })
-        st.plotly_chart(px.line(irr_df, x="Metric", y="Value", markers=True, title="Irrigation Driver Plot"), use_container_width=True)
+        fig = px.line(irr_df, x="Parameter", y="Value", markers=True, title="Irrigation Factors")
+        fig.update_traces(line=dict(color="#38bdf8", width=4))
+        fig = apply_dark_plotly(fig)
+        st.plotly_chart(fig, use_container_width=True, theme=None)
 
 elif page == "Fertilizer & Soil":
-    st.markdown("## Fertilizer & Soil Analysis")
-
-    n = st.number_input("Nitrogen", value=45.0, key="fs_n")
-    p = st.number_input("Phosphorus", value=38.0, key="fs_p")
-    k = st.number_input("Potassium", value=42.0, key="fs_k")
-    moisture = st.number_input("Soil Moisture", value=41.0, key="fs_m")
+    n = st.number_input("Nitrogen", value=45.0)
+    p = st.number_input("Phosphorus", value=38.0)
+    k = st.number_input("Potassium", value=42.0)
+    moisture = st.number_input("Moisture", value=44.0)
     ph = st.number_input("Soil pH", value=6.7, key="fs_ph")
 
     if st.button("Analyze Soil", use_container_width=True):
         fert, conf = fertilizer_advice(n, p, k)
         df = pd.DataFrame({"Nutrient": ["N", "P", "K"], "Value": [n, p, k]})
-        fig = px.bar(df, x="Nutrient", y="Value", color="Nutrient", title="Soil Nutrient Levels")
-        st.plotly_chart(fig, use_container_width=True)
-        st.plotly_chart(soil_radar_figure(n, p, k, moisture, ph), use_container_width=True)
+
+        fig = px.bar(
+            df,
+            x="Nutrient",
+            y="Value",
+            color="Nutrient",
+            title="Soil Nutrient Levels",
+            color_discrete_map={"N": "#22c55e", "P": "#38bdf8", "K": "#f59e0b"}
+        )
+        fig = apply_dark_plotly(fig)
+        st.plotly_chart(fig, use_container_width=True, theme=None)
+
+        radar_fig = soil_radar_figure(n, p, k, moisture, ph)
+        st.plotly_chart(radar_fig, use_container_width=True, theme=None)
+
         st.success(f"Recommendation: {fert} ({conf}% confidence)")
 
 elif page == "NDVI Analysis":
-    st.markdown("## NDVI Analysis")
-
     red = st.slider("Red Band", 0.0, 1.0, 0.30)
     nir = st.slider("NIR Band", 0.0, 1.0, 0.72)
     temp = st.slider("Temperature", 15.0, 45.0, 29.0)
@@ -838,22 +909,41 @@ elif page == "NDVI Analysis":
         ndvi = calculate_ndvi(red, nir)
         health = predict_health_score(ndvi, moisture, temp)
 
-        gauge = go.Figure(go.Indicator(
-            mode="gauge+number",
-            value=health,
-            title={'text': "Health Score"},
-            gauge={'axis': {'range': [0, 100]}}
-        ))
-        gauge.update_layout(height=350)
-        st.plotly_chart(gauge, use_container_width=True)
+        gauge = go.Figure(
+            go.Indicator(
+                mode="gauge+number",
+                value=health,
+                number={'font': {'color': "#f8fafc"}},
+                title={'text': "Health Score", 'font': {'color': "#f8fafc"}},
+                gauge={
+                    'axis': {'range': [0, 100], 'tickcolor': "#cbd5e1"},
+                    'bar': {'color': "#22c55e"},
+                    'bgcolor': "#0f172a",
+                    'bordercolor': "rgba(148,163,184,0.2)",
+                    'steps': [
+                        {'range': [0, 40], 'color': "#7f1d1d"},
+                        {'range': [40, 70], 'color': "#78350f"},
+                        {'range': [70, 100], 'color': "#14532d"}
+                    ]
+                }
+            )
+        )
+        gauge.update_layout(
+            height=350,
+            paper_bgcolor="rgba(0,0,0,0)",
+            font=dict(color="#e5e7eb")
+        )
+        st.plotly_chart(gauge, use_container_width=True, theme=None)
 
-        ndvi_trend_df = generate_ndvi_trend(ndvi)
-        st.plotly_chart(px.line(ndvi_trend_df, x="Day", y="NDVI", markers=True, title="NDVI Trend Chart"), use_container_width=True)
+        ndvi_df = generate_ndvi_trend(ndvi)
+        fig = px.area(ndvi_df, x="Day", y="NDVI", title="NDVI Trend")
+        fig.update_traces(line=dict(color="#22c55e"), fillcolor="rgba(34,197,94,0.25)")
+        fig = apply_dark_plotly(fig)
+        st.plotly_chart(fig, use_container_width=True, theme=None)
 
         st.success(f"NDVI: {ndvi} | Health score: {health}%")
 
 elif page == "Disease Detection":
-    st.markdown("## Disease Detection")
     uploaded_file = st.file_uploader("Upload crop leaf image", type=["jpg", "jpeg", "png"])
 
     if uploaded_file:
@@ -861,70 +951,52 @@ elif page == "Disease Detection":
         st.image(image, caption="Uploaded leaf image", use_container_width=True)
 
         if st.button("Analyze Disease", use_container_width=True):
-            avg_val = int(np.mean(arr)) % 4
-            labels = ["Healthy", "Leaf Blight", "Rust", "Leaf Spot"]
-            confidence = round(0.80 + (avg_val * 0.03), 2)
-            st.warning(f"Predicted condition: {labels[avg_val]} (confidence: {round(confidence * 100, 2)}%)")
+            result = predict_disease(arr)
+            st.warning(
+                f"Predicted condition: {result['class_name']} "
+                f"(confidence: {round(result['confidence'] * 100, 2)}%)"
+            )
 
             disease_df = pd.DataFrame({
-                "Condition": labels,
-                "Score": [32, 18, 24, 26]
+                "Class": ["Healthy", "Leaf Blight", "Rust", "Leaf Spot"],
+                "Score": [22, 31, 18, 29]
             })
-            st.plotly_chart(px.pie(disease_df, names="Condition", values="Score", title="Disease Risk Distribution"), use_container_width=True)
+            fig = px.bar(
+                disease_df,
+                x="Class",
+                y="Score",
+                color="Class",
+                title="Disease Class Distribution"
+            )
+            fig = apply_dark_plotly(fig)
+            st.plotly_chart(fig, use_container_width=True, theme=None)
 
 elif page == "AI Assistant":
-    st.markdown("## AI Assistant")
-
     toolbar_text = (
         f"💬 AgriVision AI Chat | 📍 {st.session_state.district} | 🌾 {st.session_state.season} | "
         + ("✅ Smart Advisor data loaded" if st.session_state.latest_farm_data else "⚠️ Run Smart Advisor for personalized context")
     )
-    st.markdown(f"<div class='chat-toolbar'>{toolbar_text}</div>", unsafe_allow_html=True)
 
-    s1, s2, s3 = st.columns(3)
-    with s1:
-        if st.button("Suggest best crop"):
-            st.session_state.chat_history.append({"role": "user", "content": "Suggest best crop"})
-    with s2:
-        if st.button("Irrigation advice"):
-            st.session_state.chat_history.append({"role": "user", "content": "Give irrigation advice"})
-    with s3:
-        if st.button("Fertilizer advice"):
-            st.session_state.chat_history.append({"role": "user", "content": "Give fertilizer advice"})
+    st.markdown(f"<div class='chat-toolbar'>{toolbar_text}</div>", unsafe_allow_html=True)
 
     for message in st.session_state.chat_history:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
 
-    if prompt := st.chat_input("Ask about irrigation, crop, disease, fertilizer, weather, or Telangana farming..."):
+    if prompt := st.chat_input("Ask about irrigation, crop, disease, fertilizer, or Telangana farming..."):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
 
-    if st.session_state.chat_history:
-        last_message = st.session_state.chat_history[-1]
-        if last_message["role"] == "user":
-            try:
-                reply = chatbot_reply(last_message["content"], st.session_state.latest_farm_data)
-            except Exception:
-                reply = """
-### Situation
-- Assistant fallback mode activated.
+        with st.chat_message("user"):
+            st.markdown(prompt)
 
-### Why
-- A temporary chatbot issue occurred.
-
-### Immediate Action
-- Use Smart Advisor outputs shown on screen.
-
-### Next 3 Days
-- Retry the question after running the latest analysis.
-""".strip()
-
-            st.session_state.chat_history.append({"role": "assistant", "content": reply})
-            with st.chat_message("assistant"):
+        with st.chat_message("assistant"):
+            with st.spinner("AgriVision AI is analyzing..."):
+                reply = chatbot_reply(prompt, st.session_state.latest_farm_data)
                 st.markdown(reply)
+                st.session_state.chat_history.append({"role": "assistant", "content": reply})
 
 st.markdown("---")
 st.markdown(
-    "<div style='text-align:center;color:#6b7280;padding:18px;font-size:14px;'>🌾 AgriVision AI | Telangana Edition | Real ML + Multi-Crop + Weather + Smart Alerts + Farm Report</div>",
+    "<div style='text-align:center;color:#94a3b8;padding:18px;font-size:14px;'>🌾 AgriVision AI | Farm Health AI | Telangana Edition</div>",
     unsafe_allow_html=True
 )
