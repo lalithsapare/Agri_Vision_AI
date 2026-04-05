@@ -1,1112 +1,597 @@
-import os
-from pathlib import Path
-
-import joblib
-import numpy as np
-import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 import streamlit as st
+import numpy as np
+import joblib
+import os
 from PIL import Image
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-from sklearn.preprocessing import LabelEncoder
+import io
 
-try:
-    import tensorflow as tf
-    TF_AVAILABLE = True
-except Exception:
-    TF_AVAILABLE = False
-
-
-# =========================
-# API KEY
-# =========================
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "YOUR_GEMINI_API_KEY")
-
-# =========================
-# PAGE CONFIG
-# =========================
+# ─────────────────────────────────────────────────────────────────────────────
+# Page Config
+# ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
-    page_title="AgriVision AI",
-    page_icon="🌾",
+    page_title="AgroSense AI | Smart Farm Intelligence",
+    page_icon="🌿",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded",
 )
 
-# =========================
-# CSS
-# =========================
+# ─────────────────────────────────────────────────────────────────────────────
+# Custom CSS
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
-.main {background: linear-gradient(135deg, #020617 0%, #071226 45%, #0b1120 100%);}
-.block-container {padding-top: 1rem; padding-bottom: 1rem;}
-[data-testid="stAppViewContainer"] {background: linear-gradient(135deg, #020617 0%, #071226 45%, #0b1120 100%);}
-[data-testid="stHeader"] {background: rgba(0,0,0,0);}
-[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #14532d 0%, #166534 50%, #14532d 100%);
-}
-[data-testid="stSidebar"] * {color: white !important;}
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300..700&family=Sora:wght@600;700&display=swap');
 
-.hero-dashboard {
-    background: linear-gradient(90deg, #166534, #22c55e, #16a34a);
-    color: white;
-    padding: 1.8rem 1.5rem;
-    border-radius: 24px;
-    box-shadow: 0 12px 32px rgba(34, 197, 94, 0.18);
-    margin-bottom: 1.5rem;
-}
+    html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 
-.metric-card {
-    background: linear-gradient(135deg, #111827 0%, #172033 100%);
-    border-radius: 20px;
-    padding: 1.4rem;
-    text-align: center;
-    border: 1px solid rgba(148, 163, 184, 0.18);
-    box-shadow: 0 10px 28px rgba(0,0,0,0.35);
-    color: #e5e7eb;
-}
+    section[data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #0a2e1f 0%, #0d3b28 100%);
+        color: #d6f0e0;
+    }
+    section[data-testid="stSidebar"] .stSelectbox label,
+    section[data-testid="stSidebar"] h1,
+    section[data-testid="stSidebar"] h2,
+    section[data-testid="stSidebar"] h3,
+    section[data-testid="stSidebar"] p,
+    section[data-testid="stSidebar"] span { color: #d6f0e0 !important; }
 
-.health-card {
-    background: linear-gradient(135deg, #0f172a 0%, #162235 100%);
-    border-left: 6px solid #22c55e;
-    border-radius: 20px;
-    padding: 1.4rem;
-    box-shadow: 0 10px 28px rgba(0,0,0,0.35);
-    color: #e5e7eb;
-    border: 1px solid rgba(148, 163, 184, 0.16);
-}
+    .main-header {
+        background: linear-gradient(135deg, #0a2e1f 0%, #1b5e38 60%, #2d7a50 100%);
+        padding: 2rem 2.5rem 1.5rem;
+        border-radius: 16px;
+        color: white;
+        margin-bottom: 1.5rem;
+        box-shadow: 0 8px 32px rgba(10,46,31,0.25);
+    }
+    .main-header h1 { font-family: 'Sora', sans-serif; font-size: 2.2rem; margin: 0; }
+    .main-header p  { opacity: 0.82; margin: 0.4rem 0 0; font-size: 1rem; }
 
-.chat-toolbar {
-    background: linear-gradient(135deg, #0f172a 0%, #162235 100%);
-    border-radius: 16px;
-    padding: 1rem 1.2rem;
-    border: 1px solid rgba(148, 163, 184, 0.16);
-    margin-bottom: 1rem;
-    color: #d1fae5;
-}
+    .module-card {
+        background: #f7f9f7;
+        border: 1px solid #cde3d5;
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin-bottom: 1rem;
+    }
+    .module-title {
+        font-family: 'Sora', sans-serif;
+        font-size: 1.2rem;
+        color: #0a2e1f;
+        margin-bottom: 0.4rem;
+    }
 
-.farm-title {font-size: 2.35rem; font-weight: 800; margin: 0;}
-.subtitle {margin: 0.4rem 0 0 0; font-size: 1.05rem; opacity: 0.96;}
-.small-muted {color: #94a3b8; font-size: 0.9rem;}
-.badge-good {
-    background: #dcfce7;
-    color: #166534;
-    padding: 0.35rem 0.75rem;
-    border-radius: 999px;
-    font-size: 0.8rem;
-    font-weight: 700;
-}
-.alert-high {
-    background: linear-gradient(135deg, #3b0a0a, #7f1d1d);
-    color: #fecaca;
-    padding: 12px 16px;
-    border-radius: 14px;
-    margin-bottom: 10px;
-    font-weight: 600;
-    border: 1px solid rgba(248, 113, 113, 0.25);
-}
-.alert-med {
-    background: linear-gradient(135deg, #3b2a09, #78350f);
-    color: #fde68a;
-    padding: 12px 16px;
-    border-radius: 14px;
-    margin-bottom: 10px;
-    font-weight: 600;
-    border: 1px solid rgba(251, 191, 36, 0.25);
-}
-.alert-good {
-    background: linear-gradient(135deg, #052e16, #14532d);
-    color: #bbf7d0;
-    padding: 12px 16px;
-    border-radius: 14px;
-    margin-bottom: 10px;
-    font-weight: 600;
-    border: 1px solid rgba(74, 222, 128, 0.25);
-}
-.wow-box {
-    background: linear-gradient(135deg, #0f172a, #132a13);
-    border: 1px solid rgba(74, 222, 128, 0.18);
-    color: #dcfce7;
-    padding: 16px;
-    border-radius: 18px;
-    font-weight: 600;
-}
-div[data-testid="stMetric"] {
-    background: linear-gradient(135deg, #111827 0%, #172033 100%);
-    border: 1px solid rgba(148, 163, 184, 0.15);
-    padding: 16px;
-    border-radius: 18px;
-    box-shadow: 0 10px 28px rgba(0,0,0,0.28);
-}
-div[data-testid="stMetricLabel"] {color: #94a3b8 !important;}
-div[data-testid="stMetricValue"] {color: #f8fafc !important;}
-div[data-testid="stMetricDelta"] {color: #22c55e !important;}
-.stDataFrame, .stTable {background: #0f172a !important;}
-h1, h2, h3, h4, h5, h6, p, label, div, span {color: #f8fafc;}
+    .result-healthy {
+        background: #e8f5e9; border-left: 4px solid #43a047;
+        padding: 1rem 1.2rem; border-radius: 8px; margin-top: 1rem;
+    }
+    .result-disease {
+        background: #fff3e0; border-left: 4px solid #fb8c00;
+        padding: 1rem 1.2rem; border-radius: 8px; margin-top: 1rem;
+    }
+    .result-severe {
+        background: #fce4ec; border-left: 4px solid #e53935;
+        padding: 1rem 1.2rem; border-radius: 8px; margin-top: 1rem;
+    }
 
-.result-card {
-    background: linear-gradient(135deg, #0f172a 0%, #162235 100%);
-    border-radius: 18px;
-    padding: 18px;
-    border: 1px solid rgba(148,163,184,0.16);
-    box-shadow: 0 10px 28px rgba(0,0,0,0.35);
-}
+    .confidence-badge {
+        display: inline-block; background: #0a2e1f; color: white;
+        padding: 0.25rem 0.85rem; border-radius: 999px;
+        font-size: 0.85rem; font-weight: 600; margin-top: 0.5rem;
+    }
+
+    .stFileUploader { border: 2px dashed #1b5e38 !important; border-radius: 10px; }
+
+    [data-testid="metric-container"] {
+        background: #f0f7f3; border-radius: 10px; padding: 0.8rem;
+        border: 1px solid #c5ddd0;
+    }
+
+    .status-pill {
+        display:inline-block; padding:0.2rem 0.7rem;
+        border-radius:999px; font-size:0.78rem; font-weight:600;
+        margin-left:0.5rem;
+    }
+    .pill-ok  { background:#e8f5e9; color:#2e7d32; }
+    .pill-err { background:#fce4ec; color:#c62828; }
+
+    div[data-testid="stDecoration"] { display:none; }
 </style>
 """, unsafe_allow_html=True)
 
-# =========================
-# SESSION STATE
-# =========================
-if "chat_history" not in st.session_state:
-    st.session_state.chat_history = []
+# ─────────────────────────────────────────────────────────────────────────────
+# Utility Functions
+# ─────────────────────────────────────────────────────────────────────────────
+@st.cache_resource(show_spinner=False)
+def load_keras_model(path: str):
+    try:
+        import tensorflow as tf
+        model = tf.keras.models.load_model(path)
+        return model, None
+    except Exception as e:
+        return None, str(e)
 
-if "latest_farm_data" not in st.session_state:
-    st.session_state.latest_farm_data = None
+@st.cache_resource(show_spinner=False)
+def load_joblib(path: str):
+    try:
+        obj = joblib.load(path)
+        return obj, None
+    except Exception as e:
+        return None, str(e)
 
-if "district" not in st.session_state:
-    st.session_state.district = "Hyderabad"
+def preprocess_image(uploaded_file, target_size=(224, 224)):
+    img = Image.open(uploaded_file).convert("RGB")
+    img = img.resize(target_size)
+    arr = np.array(img, dtype=np.float32) / 255.0
+    return np.expand_dims(arr, axis=0), img
 
-if "season" not in st.session_state:
-    st.session_state.season = "Kharif"
+def predict_top_class(model, class_dict: dict, img_array: np.ndarray):
+    preds = model.predict(img_array, verbose=0)[0]
+    if isinstance(next(iter(class_dict)), str):
+        idx_to_label = {v: k for k, v in class_dict.items()}
+    else:
+        idx_to_label = class_dict
 
-if "multi_crop_df" not in st.session_state:
-    st.session_state.multi_crop_df = None
-
-# =========================
-# PLOTLY THEME
-# =========================
-def apply_dark_plotly(fig, title=None):
-    fig.update_layout(
-        template=None,
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="#0f172a",
-        font=dict(color="#e5e7eb"),
-        title_font=dict(color="#f8fafc", size=22),
-        legend=dict(font=dict(color="#e5e7eb")),
-        margin=dict(l=20, r=20, t=60, b=20)
-    )
-    fig.update_xaxes(
-        showgrid=True,
-        gridcolor="rgba(148,163,184,0.15)",
-        zeroline=False,
-        linecolor="rgba(148,163,184,0.25)",
-        tickfont=dict(color="#cbd5e1"),
-        title_font=dict(color="#e5e7eb")
-    )
-    fig.update_yaxes(
-        showgrid=True,
-        gridcolor="rgba(148,163,184,0.15)",
-        zeroline=False,
-        linecolor="rgba(148,163,184,0.25)",
-        tickfont=dict(color="#cbd5e1"),
-        title_font=dict(color="#e5e7eb")
-    )
-    if title:
-        fig.update_layout(title=title)
-    return fig
-
-# =========================
-# CNN MODEL SERVICE - FULLY IMPLEMENTED FOR TOMATO DISEASE, RICE DISEASE, RICE PEST, LEAF DETECTION
-# =========================
-class CNNModelService:
-    def __init__(self, model_dir="models"):
-        self.model_dir = Path(model_dir)
-        self.models = {}
-        self.classes = {}
-        self.errors = {}
-        self.target_size = (224, 224)
-        self._load_all()
-
-    def _load_one(self, model_key, model_file, classes_file):
-        model_path = self.model_dir / model_file
-        classes_path = self.model_dir / classes_file
-
-        if not model_path.exists():
-            self.errors[model_key] = f"Missing model file: {model_file}"
-            return
-
-        if not classes_path.exists():
-            self.errors[model_key] = f"Missing classes file: {classes_file}"
-            return
-
-        if not TF_AVAILABLE:
-            self.errors[model_key] = "TensorFlow not installed"
-            return
-
-        try:
-            self.models[model_key] = tf.keras.models.load_model(model_path)
-            self.classes[model_key] = joblib.load(classes_path)
-        except Exception as e:
-            self.errors[model_key] = str(e)
-
-    def _load_all(self):
-        # Tomato Disease Detection - FULLY LOADED
-        self._load_one("tomato_disease", "tomato_disease_model.h5", "tomato_classes.joblib")
-        # Rice Disease Detection - FULLY LOADED  
-        self._load_one("rice_disease", "rice_disease_model.h5", "rice_classes.joblib")
-        # Rice Pest Detection - FULLY LOADED
-        self._load_one("rice_pest", "rice_pest_model.h5", "rice_pest_classes.joblib")
-        # Leaf Detection - FULLY LOADED WITH HOOK
-        self._load_one("leaf_detection", "leaf_model.h5", "leaf_classes.joblib")
-
-    def has_model(self, model_key):
-        return model_key in self.models
-
-    def get_error(self, model_key):
-        return self.errors.get(model_key, "Model not loaded")
-
-    def preprocess_image(self, pil_image):
-        image = pil_image.convert("RGB").resize(self.target_size)
-        arr = np.array(image, dtype=np.float32) / 255.0
-        arr = np.expand_dims(arr, axis=0)
-        return image, arr
-
-    def predict(self, pil_image, model_key):
-        if model_key not in self.models:
-            raise ValueError(self.get_error(model_key))
-
-        _, arr = self.preprocess_image(pil_image)
-        pred = self.models[model_key].predict(arr, verbose=0)
-        class_idx = int(np.argmax(pred, axis=1)[0])
-        confidence = float(np.max(pred, axis=1)[0])
-
-        class_list = self.classes.get(model_key, [])
-        if isinstance(class_list, dict):
-            label = class_list.get(class_idx, str(class_idx))
-        elif isinstance(class_list, (list, tuple, np.ndarray)):
-            label = class_list[class_idx] if class_idx < len(class_list) else str(class_idx)
-        else:
-            label = str(class_idx)
-
-        return {
-            "class_index": class_idx,
-            "class_name": label,
-            "confidence": round(confidence * 100, 2)
-        }
-
-cnn_service = CNNModelService("models")
-
-# =========================
-# REAL ML LAYER - NO CHANGES
-# =========================
-@st.cache_resource
-def train_ml_models():
-    crop_names = [
-        "Rice", "Cotton", "Maize", "Wheat", "Sugarcane", "Soybean",
-        "Groundnut", "Chilli", "Turmeric", "Red Gram", "Black Gram",
-        "Green Gram", "Bengal Gram", "Sesame", "Jowar", "Bajra",
-        "Sunflower", "Castor", "Paddy", "Horse Gram"
-    ]
-
-    crop_profiles = {
-        "Rice": [80, 40, 40, 28, 80, 6.5, 180],
-        "Cotton": [70, 35, 50, 30, 60, 7.0, 90],
-        "Maize": [85, 45, 40, 27, 65, 6.7, 110],
-        "Wheat": [65, 35, 35, 22, 55, 6.8, 60],
-        "Sugarcane": [90, 50, 55, 29, 70, 7.2, 160],
-        "Soybean": [60, 40, 35, 26, 65, 6.5, 95],
-        "Groundnut": [55, 35, 45, 28, 55, 6.6, 70],
-        "Chilli": [75, 40, 45, 27, 58, 6.8, 65],
-        "Turmeric": [70, 45, 50, 26, 75, 6.4, 140],
-        "Red Gram": [45, 30, 35, 29, 55, 7.0, 75],
-        "Black Gram": [40, 28, 30, 28, 58, 6.9, 70],
-        "Green Gram": [42, 30, 32, 27, 60, 6.8, 68],
-        "Bengal Gram": [38, 26, 28, 24, 50, 7.1, 55],
-        "Sesame": [35, 22, 28, 29, 50, 6.7, 50],
-        "Jowar": [48, 28, 30, 30, 52, 7.2, 65],
-        "Bajra": [45, 24, 26, 31, 48, 7.3, 45],
-        "Sunflower": [58, 34, 38, 27, 54, 6.9, 62],
-        "Castor": [50, 30, 36, 30, 50, 7.4, 58],
-        "Paddy": [82, 42, 40, 28, 82, 6.5, 185],
-        "Horse Gram": [30, 20, 22, 28, 46, 7.0, 40]
+    top_idx = int(np.argmax(preds))
+    top_label = idx_to_label.get(top_idx, f"Class {top_idx}")
+    confidence = float(preds[top_idx]) * 100
+    all_probs = {
+        idx_to_label.get(i, f"Class {i}"): float(p) * 100
+        for i, p in enumerate(preds)
     }
+    return top_label, confidence, all_probs
 
-    X_crop = []
-    y_crop = []
-
-    for crop in crop_names:
-        base = crop_profiles[crop]
-        for _ in range(35):
-            n = np.clip(np.random.normal(base[0], 8), 10, 120)
-            p = np.clip(np.random.normal(base[1], 6), 10, 80)
-            k = np.clip(np.random.normal(base[2], 6), 10, 80)
-            temp = np.clip(np.random.normal(base[3], 3), 15, 40)
-            humidity = np.clip(np.random.normal(base[4], 8), 30, 95)
-            ph = np.clip(np.random.normal(base[5], 0.4), 4.5, 8.5)
-            rainfall = np.clip(np.random.normal(base[6], 25), 0, 300)
-            X_crop.append([n, p, k, temp, humidity, ph, rainfall])
-            y_crop.append(crop)
-
-    crop_encoder = LabelEncoder()
-    y_crop_enc = crop_encoder.fit_transform(y_crop)
-
-    crop_model = RandomForestClassifier(
-        n_estimators=220,
-        max_depth=14,
-        random_state=42
-    )
-    crop_model.fit(X_crop, y_crop_enc)
-
-    X_yield = []
-    y_yield = []
-    crop_factor_map = {crop: i + 1 for i, crop in enumerate(crop_names)}
-
-    for crop in crop_names:
-        crop_factor = crop_factor_map[crop]
-        base = crop_profiles[crop]
-        for _ in range(40):
-            ph = np.clip(np.random.normal(base[5], 0.5), 4.5, 8.5)
-            temp = np.clip(np.random.normal(base[3], 3), 15, 40)
-            rainfall = np.clip(np.random.normal(base[6], 30), 0, 300)
-            fertilizer = np.clip(np.random.normal(base[0], 10), 10, 140)
-            humidity = np.clip(np.random.normal(base[4], 8), 30, 95)
-            soil_moisture = np.clip(np.random.normal(42, 12), 10, 80)
-
-            ideal_penalty = abs(ph - 6.8) * 0.5
-            y = (
-                1.2 + crop_factor * 0.12 + temp * 0.05 + rainfall * 0.01 +
-                fertilizer * 0.015 + humidity * 0.02 + soil_moisture * 0.03 -
-                ideal_penalty + np.random.normal(0, 0.3)
-            )
-            X_yield.append([ph, temp, rainfall, fertilizer, humidity, soil_moisture, crop_factor])
-            y_yield.append(max(0.8, y))
-
-    yield_model = RandomForestRegressor(
-        n_estimators=260,
-        max_depth=16,
-        random_state=42
-    )
-    yield_model.fit(X_yield, y_yield)
-
-    X_irr = []
-    y_irr = []
-
-    for _ in range(400):
-        soil_m = np.random.uniform(10, 80)
-        temp = np.random.uniform(15, 40)
-        hum = np.random.uniform(30, 95)
-        ph = np.random.uniform(4.5, 8.5)
-        rain = np.random.uniform(0, 250)
-
-        if rain > 120 or soil_m > 60:
-            label = "Low"
-        elif soil_m < 28 and temp > 30:
-            label = "High"
+def result_box(label: str, confidence: float, label_type: str = "auto"):
+    lwr = label.lower()
+    if label_type == "auto":
+        if "healthy" in lwr:
+            box_cls = "result-healthy"
+        elif confidence < 55:
+            box_cls = "result-disease"
         else:
-            label = "Moderate"
+            box_cls = "result-severe"
+    else:
+        box_cls = {
+            "healthy": "result-healthy",
+            "warning": "result-disease",
+            "danger": "result-severe"
+        }.get(label_type, "result-disease")
 
-        X_irr.append([soil_m, temp, hum, ph, rain])
-        y_irr.append(label)
-
-    irr_encoder = LabelEncoder()
-    y_irr_enc = irr_encoder.fit_transform(y_irr)
-
-    irrigation_model = RandomForestClassifier(
-        n_estimators=180,
-        max_depth=10,
-        random_state=42
-    )
-    irrigation_model.fit(X_irr, y_irr_enc)
-
-    return {
-        "crop_model": crop_model,
-        "crop_encoder": crop_encoder,
-        "yield_model": yield_model,
-        "irrigation_model": irrigation_model,
-        "irrigation_encoder": irr_encoder,
-        "crop_factor_map": crop_factor_map,
-        "all_crops": crop_names
-    }
-
-ml_bundle = train_ml_models()
-
-# =========================
-# BACKEND-LIKE SERVICE LAYER - NO CHANGES
-# =========================
-class AgriAPIService:
-    def __init__(self, bundle):
-        self.bundle = bundle
-
-    def recommend_crop(self, features):
-        pred = self.bundle["crop_model"].predict([features])[0]
-        crop = self.bundle["crop_encoder"].inverse_transform([pred])[0]
-        probs = self.bundle["crop_model"].predict_proba([features])[0]
-        conf = round(float(np.max(probs)) * 100, 2)
-        return crop, conf
-
-    def predict_yield(self, ph, temp, rainfall, fertilizer, humidity, soil_moisture, crop_name):
-        crop_factor = self.bundle["crop_factor_map"].get(crop_name, 1)
-        pred = self.bundle["yield_model"].predict([[ph, temp, rainfall, fertilizer, humidity, soil_moisture, crop_factor]])[0]
-        return round(float(pred), 2)
-
-    def predict_irrigation(self, soil_moisture, temp, humidity, ph, rainfall):
-        pred = self.bundle["irrigation_model"].predict([[soil_moisture, temp, humidity, ph, rainfall]])[0]
-        label = self.bundle["irrigation_encoder"].inverse_transform([pred])[0]
-        if label == "Low":
-            action = "Skip irrigation cycle"
-        elif label == "High":
-            action = "Deep irrigation needed"
-        else:
-            action = "Light irrigation"
-        return label, action
-
-api_service = AgriAPIService(ml_bundle)
-
-# =========================
-# HELPERS - NO CHANGES
-# =========================
-def calculate_ndvi(red, nir):
-    red = float(red)
-    nir = float(nir)
-    if (nir + red) == 0:
-        return 0.0
-    return round((nir - red) / (nir + red), 4)
-
-def predict_health_score(ndvi, moisture, temp):
-    score = (ndvi * 50) + (moisture * 0.3) + ((35 - abs(temp - 28)) * 0.2)
-    return min(100, max(0, round(score, 1)))
-
-def fertilizer_advice(n, p, k):
-    if n < 50:
-        return "Apply nitrogen fertilizer in split doses", 87.0
-    if p < 40:
-        return "Apply phosphorus fertilizer with basal dose", 86.0
-    if k < 40:
-        return "Apply potash for stress tolerance", 85.0
-    return "Use balanced NPK fertilizer with organic manure", 89.0
-
-def generate_ndvi_trend(ndvi):
-    return pd.DataFrame({
-        "Day": [f"Day {i}" for i in range(1, 8)],
-        "NDVI": [max(0.1, round(ndvi - 0.05 + (i * 0.008), 3)) for i in range(1, 8)]
-    })
-
-def soil_radar_figure(n, p, k, moisture, ph):
-    radar_df = pd.DataFrame({
-        "Metric": ["Nitrogen", "Phosphorus", "Potassium", "Moisture", "pH x10"],
-        "Value": [n, p, k, moisture, ph * 10]
-    })
-    fig = px.line_polar(
-        radar_df,
-        r="Value",
-        theta="Metric",
-        line_close=True,
-        title="Soil Radar Chart"
-    )
-    fig.update_traces(fill="toself", line_color="#22c55e")
-    fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        polar=dict(
-            bgcolor="#0f172a",
-            radialaxis=dict(gridcolor="rgba(148,163,184,0.15)", tickfont=dict(color="#cbd5e1")),
-            angularaxis=dict(gridcolor="rgba(148,163,184,0.15)", tickfont=dict(color="#cbd5e1"))
-        ),
-        font=dict(color="#e5e7eb")
-    )
-    return fig
-
-def smart_alerts(health, ndvi, n, p, k):
-    alerts = []
-    if health < 40:
-        alerts.append(("high", "🚨 High risk: poor farm health detected"))
-    if ndvi < 0.35:
-        alerts.append(("med", "⚠ Low NDVI detected"))
-    if n < 40 or p < 30 or k < 30:
-        alerts.append(("med", "⚠ Soil imbalance detected"))
-    if not alerts:
-        alerts.append(("good", "✅ Farm looks stable"))
-    return alerts
-
-def generate_farm_report(farm_data, multi_crop_df=None):
-    lines = []
-    lines.append("AGRI VISION AI - FARM REPORT")
-    lines.append("=" * 50)
-    if farm_data:
-        lines.append(f"District: {farm_data.get('district', 'N/A')}")
-        lines.append(f"Season: {farm_data.get('season', 'N/A')}")
-        lines.append(f"Crop: {farm_data.get('crop', 'N/A')}")
-        lines.append(f"Yield: {farm_data.get('yield', 'N/A')} t/ha")
-        lines.append(f"Risk/Health: {farm_data.get('health', 'N/A')}%")
-        lines.append(f"NDVI: {farm_data.get('ndvi', 'N/A')}")
-        lines.append(f"Irrigation: {farm_data.get('irrigation', 'N/A')}")
-        lines.append(f"Action: {farm_data.get('action', 'N/A')}")
-        lines.append(f"Fertilizer Advice: {farm_data.get('fertilizer', 'N/A')}")
-    if multi_crop_df is not None and not multi_crop_df.empty:
-        lines.append("")
-        lines.append("MULTI-CROP ANALYSIS")
-        lines.append(multi_crop_df.to_string(index=False))
-    return "\\\\n".join(lines)
-
-def wow_feature_box():
-    st.markdown("""
-    <div class="wow-box">
-    🚀 WOW FEATURE: Multi-crop comparison, trained ML prediction, smart alerts, visual analytics, downloadable farm report, and CNN-based disease/pest detection in one dashboard.
+    st.markdown(f"""
+    <div class="{box_cls}">
+        <strong>🔍 Detected:</strong> {label}<br>
+        <span class="confidence-badge">Confidence: {confidence:.1f}%</span>
     </div>
     """, unsafe_allow_html=True)
 
-def chatbot_reply(question, farm_data):
-    q = question.lower()
+def model_status_pill(model_obj, path: str):
+    if model_obj is not None:
+        return '<span class="status-pill pill-ok">✓ Loaded</span>'
+    return f'<span class="status-pill pill-err">✗ {os.path.basename(path)} not found</span>'
 
-    if farm_data is None:
-        return """
-### Situation
-- No farm analysis data available yet.
+# ─────────────────────────────────────────────────────────────────────────────
+# Model Paths
+# ─────────────────────────────────────────────────────────────────────────────
+PATHS = {
+    "tomato_disease_model": "tomato_disease_model.h5",
+    "tomato_classes": "models/tomato_classes.joblib",
+    "rice_disease_model": "rice_disease_model.h5",
+    "rice_classes": "rice_classes.joblib",
+    "rice_pest_model": "rice_pest_model.h5",
+    "rice_pest_classes": "rice_pest_classes.joblib",
+    "nutrient_model": "nutrient_deficiency_cnn_model.keras",
+}
 
-### Why
-- The assistant works better after Smart Advisor or Multi-Crop Analysis.
+# ─────────────────────────────────────────────────────────────────────────────
+# Load Models
+# ─────────────────────────────────────────────────────────────────────────────
+with st.spinner("⚙️ Loading AI models..."):
+    tomato_disease_model, _tde = load_keras_model(PATHS["tomato_disease_model"])
+    tomato_classes, _tce = load_joblib(PATHS["tomato_classes"])
+    rice_disease_model, _rde = load_keras_model(PATHS["rice_disease_model"])
+    rice_classes, _rce = load_joblib(PATHS["rice_classes"])
+    rice_pest_model, _rpe = load_keras_model(PATHS["rice_pest_model"])
+    rice_pest_classes, _rpce = load_joblib(PATHS["rice_pest_classes"])
+    nutrient_model, _nde = load_keras_model(PATHS["nutrient_model"])
 
-### Immediate action
-- Run Smart Advisor first.
-- Then ask about crop, yield, irrigation, NDVI, fertilizer, disease, or pest.
+DEFAULT_NUTRIENT_CLASSES = {
+    0: "Nitrogen Deficiency",
+    1: "Phosphorus Deficiency",
+    2: "Potassium Deficiency",
+    3: "Iron Deficiency",
+    4: "Magnesium Deficiency",
+    5: "Calcium Deficiency",
+    6: "Sulfur Deficiency",
+    7: "Healthy / No Deficiency",
+}
 
-### Next 3 days
-- Collect soil and moisture readings.
-- Compare 2 to 5 crops in Multi-Crop Analysis.
-"""
+# ─────────────────────────────────────────────────────────────────────────────
+# Sidebar
+# ─────────────────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("## 🌿 AgroSense AI")
+    st.markdown("### Navigation")
+    module = st.selectbox(
+        "Select Detection Module",
+        [
+            "🏠 Dashboard",
+            "🍅 Tomato Disease Detection",
+            "🌾 Rice Disease Detection",
+            "🐛 Rice Pest Detection",
+            "🧪 Nutrient Deficiency Detection",
+        ],
+        label_visibility="collapsed",
+    )
 
-    if "yield" in q:
-        return f"""
-### Situation
-- Expected yield is {farm_data.get('yield')} t/ha.
-
-### Why
-- This estimate is based on current farm inputs and selected crop.
-
-### Immediate action
-- Keep fertilizer and irrigation aligned with the recommended plan.
-
-### Next 3 days
-- Monitor moisture daily.
-- Recheck NDVI trend.
-- Avoid over-irrigation.
-"""
-    if "crop" in q:
-        return f"""
-### Situation
-- Recommended crop is {farm_data.get('crop')}.
-
-### Why
-- The trained crop model matched your soil and climate inputs to the closest crop pattern.
-
-### Immediate action
-- Prepare seed and fertilizer planning for {farm_data.get('crop')}.
-
-### Next 3 days
-- Validate rainfall readiness.
-- Recheck soil pH.
-- Compare backup crops in Multi-Crop Analysis.
-"""
-    if "irrigation" in q or "water" in q:
-        return f"""
-### Situation
-- Irrigation level is {farm_data.get('irrigation')}.
-
-### Why
-- The irrigation model used soil moisture, temperature, humidity, pH, and rainfall input.
-
-### Immediate action
-- {farm_data.get('action')}
-
-### Next 3 days
-- Check field moisture morning and evening.
-- Prevent waterlogging.
-- Track plant stress symptoms.
-"""
-    return f"""
-### Situation
-- Farm health score is {farm_data.get('health')}% and NDVI is {farm_data.get('ndvi')}.
-
-### Why
-- These values reflect current vegetation strength and field balance.
-
-### Immediate action
-- Follow fertilizer advice: {farm_data.get('fertilizer')}
-
-### Next 3 days
-- Watch NDVI trend.
-- Recheck nutrient balance.
-- Download the farm report for tracking.
-"""
-
-def process_image(uploaded_file):
-    image = Image.open(uploaded_file).convert("RGB")
-    return image
-
-def render_header():
+    st.markdown("---")
+    st.markdown("### ⚙️ Model Status")
     st.markdown(
-        f"""
-        <div class="hero-dashboard">
-            <div style='display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;'>
-                <div>
-                    <h1 class="farm-title">AgriVision AI</h1>
-                    <p class="subtitle">Farm Health AI</p>
-                </div>
-                <div style='text-align:right;'>
-                    <div><span class="badge-good">Telangana Edition</span></div>
-                    <div style='margin-top:0.5rem;font-size:0.95rem;'>📍 {st.session_state.district} | 🌾 {st.session_state.season}</div>
-                </div>
-            </div>
-        </div>
-        """,
+        f"Tomato Disease {model_status_pill(tomato_disease_model, PATHS['tomato_disease_model'])}<br>"
+        f"Tomato Classes {model_status_pill(tomato_classes, PATHS['tomato_classes'])}<br>"
+        f"Rice Disease {model_status_pill(rice_disease_model, PATHS['rice_disease_model'])}<br>"
+        f"Rice Classes {model_status_pill(rice_classes, PATHS['rice_classes'])}<br>"
+        f"Rice Pest {model_status_pill(rice_pest_model, PATHS['rice_pest_model'])}<br>"
+        f"Pest Classes {model_status_pill(rice_pest_classes, PATHS['rice_pest_classes'])}<br>"
+        f"Nutrient CNN {model_status_pill(nutrient_model, PATHS['nutrient_model'])}",
         unsafe_allow_html=True,
     )
 
-def render_top_dashboard():
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        st.markdown("<div class='metric-card'><div class='small-muted'>Overall Health</div><h2 style='color:#22c55e;'>87.4%</h2><div class='small-muted'>+3.2% this week</div></div>", unsafe_allow_html=True)
-    with c2:
-        st.markdown("<div class='metric-card'><div class='small-muted'>Active Alerts</div><h2 style='color:#f87171;'>4</h2><div class='small-muted'>2 critical zones</div></div>", unsafe_allow_html=True)
-    with c3:
-        st.markdown("<div class='metric-card'><div class='small-muted'>Yield Forecast</div><h2 style='color:#86efac;'>4.2 t/ha</h2><div class='small-muted'>On target</div></div>", unsafe_allow_html=True)
-    with c4:
-        st.markdown("<div class='metric-card'><div class='small-muted'>Soil Moisture</div><h2 style='color:#60a5fa;'>62%</h2><div class='small-muted'>Optimal</div></div>", unsafe_allow_html=True)
-
-# =========================
-# SIDEBAR - CNN MODEL STATUS FULLY IMPLEMENTED
-# =========================
-st.sidebar.title("🌾 AgriVision AI")
-
-page = st.sidebar.radio(
-    "Choose Module",
-    [
-        "Dashboard",
-        "Smart Advisor",
-        "Multi-Crop Analysis",
-        "Crop Recommendation",
-        "Yield Prediction",
-        "Irrigation",
-        "Fertilizer & Soil",
-        "NDVI Analysis",
-        "Disease Detection",
-        "Pest Detection", 
-        "Leaf Detection",
-        "AI Assistant"
-    ],
-)
-
-st.sidebar.markdown("### Telangana Filters")
-st.session_state.district = st.sidebar.selectbox(
-    "District",
-    [
-        "Hyderabad", "Ranga Reddy", "Medchal", "Sangareddy", "Mahabubnagar",
-        "Warangal", "Karimnagar", "Nizamabad", "Khammam", "Nalgonda",
-        "Jayashankar Bhupalpally"
-    ]
-)
-st.session_state.season = st.sidebar.selectbox("Season", ["Kharif", "Rabi"])
-
-with st.sidebar.expander("🧠 CNN Model Status"):
-    status_rows = [
-        {
-            "Module": "🍅 Tomato Disease",
-            "Status": "✅ Loaded" if cnn_service.has_model("tomato_disease") else "❌ Missing",
-            "Info": "OK" if cnn_service.has_model("tomato_disease") else cnn_service.get_error("tomato_disease")
-        },
-        {
-            "Module": "🌾 Rice Disease", 
-            "Status": "✅ Loaded" if cnn_service.has_model("rice_disease") else "❌ Missing",
-            "Info": "OK" if cnn_service.has_model("rice_disease") else cnn_service.get_error("rice_disease")
-        },
-        {
-            "Module": "🐛 Rice Pest",
-            "Status": "✅ Loaded" if cnn_service.has_model("rice_pest") else "❌ Missing", 
-            "Info": "OK" if cnn_service.has_model("rice_pest") else cnn_service.get_error("rice_pest")
-        },
-        {
-            "Module": "🍃 Leaf Detection",
-            "Status": "✅ Loaded" if cnn_service.has_model("leaf_detection") else "❌ Missing",
-            "Info": "OK" if cnn_service.has_model("leaf_detection") else cnn_service.get_error("leaf_detection")
-        }
-    ]
-    st.dataframe(pd.DataFrame(status_rows), use_container_width=True, hide_index=True)
-
-render_header()
-render_top_dashboard()
-
-# =========================
-# PAGES - NO STRUCTURAL CHANGES, CNN MODULES FULLY IMPLEMENTED
-# =========================
-if page == "Dashboard":
-    st.markdown("## Farm Health Overview")
-
-    trend_df = pd.DataFrame({
-        "Day": [f"Day {i}" for i in range(1, 31)],
-        "Health Index": [72, 74, 73, 75, 77, 76, 78, 79, 80, 78, 81, 83, 82, 84, 85, 86, 84, 87, 88, 89, 87, 90, 91, 89, 92, 93, 91, 94, 95, 96]
-    })
-    zone_df = pd.DataFrame({
-        "Zone": ["Healthy", "Moderate", "High Risk", "Critical"],
-        "Value": [52, 28, 14, 6]
-    })
-
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        fig_line = px.line(
-            trend_df,
-            x="Day",
-            y="Health Index",
-            title="Crop Health Trend - 30 Days"
-        )
-        fig_line.update_traces(line=dict(color="#22c55e", width=4))
-        fig_line = apply_dark_plotly(fig_line)
-        st.plotly_chart(fig_line, use_container_width=True, theme=None)
-
-    with col2:
-        fig_pie = px.pie(
-            zone_df,
-            names="Zone",
-            values="Value",
-            hole=0.55,
-            title="Zone Distribution",
-            color="Zone",
-            color_discrete_map={
-                "Healthy": "#22c55e",
-                "Moderate": "#f59e0b",
-                "High Risk": "#f97316",
-                "Critical": "#ef4444"
-            }
-        )
-        fig_pie.update_layout(
-            paper_bgcolor="rgba(0,0,0,0)",
-            plot_bgcolor="#0f172a",
-            font=dict(color="#e5e7eb")
-        )
-        st.plotly_chart(fig_pie, use_container_width=True, theme=None)
-
-elif page == "Smart Advisor":
-    st.markdown("## Smart Farm Advisor")
-
-    a, b, c = st.columns(3)
-
-    with a:
-        n = st.number_input("Nitrogen (N)", value=88.0)
-        p = st.number_input("Phosphorus (P)", value=40.0)
-        k = st.number_input("Potassium (K)", value=41.0)
-        ph = st.number_input("Soil pH", value=6.7)
-
-    with b:
-        temp = st.number_input("Temperature (°C)", value=29.0)
-        humidity = st.number_input("Humidity (%)", value=78.0)
-        rainfall = st.number_input("Rainfall (mm)", value=180.0)
-
-    with c:
-        moisture = st.number_input("Soil Moisture (%)", value=42.0)
-        red = st.number_input("Red Band", min_value=0.0, max_value=1.0, value=0.30)
-        nir = st.number_input("NIR Band", min_value=0.0, max_value=1.0, value=0.72)
-
-    if st.button("Run Analysis", type="primary", use_container_width=True):
-        crop, crop_conf = api_service.recommend_crop([n, p, k, temp, humidity, ph, rainfall])
-        irrigation, action = api_service.predict_irrigation(moisture, temp, humidity, ph, rainfall)
-        yield_pred = api_service.predict_yield(ph, temp, rainfall, n, humidity, moisture, crop)
-        ndvi = calculate_ndvi(red, nir)
-        health = predict_health_score(ndvi, moisture, temp)
-        fert, fert_conf = fertilizer_advice(n, p, k)
-
-        st.session_state.latest_farm_data = {
-            "district": st.session_state.district,
-            "season": st.session_state.season,
-            "crop": crop,
-            "irrigation": irrigation,
-            "action": action,
-            "yield": yield_pred,
-            "ndvi": ndvi,
-            "health": health,
-            "fertilizer": fert
-        }
-
-        x1, x2, x3 = st.columns(3)
-        x1.metric("Crop", crop, f"{crop_conf}% confidence")
-        x2.metric("Irrigation", irrigation, action)
-        x3.metric("Yield", f"{yield_pred} t/ha", "Real ML prediction")
-
-        st.markdown(
-            f"<div class='health-card'><h3 style='color:#f8fafc;'>Final Farm Decision</h3>"
-            f"<p><strong>Recommended crop:</strong> {crop}</p>"
-            f"<p><strong>Irrigation:</strong> {irrigation} - {action}</p>"
-            f"<p><strong>Fertilizer:</strong> {fert}</p>"
-            f"<p><strong>NDVI:</strong> {ndvi} | <strong>Health score:</strong> {health}%</p>"
-            f"<p><strong>Expected yield:</strong> {yield_pred} t/ha</p></div>",
-            unsafe_allow_html=True
-        )
-
-        st.markdown("### Smart Alerts")
-        for level, text in smart_alerts(health, ndvi, n, p, k):
-            css = "alert-high" if level == "high" else "alert-med" if level == "med" else "alert-good"
-            st.markdown(f"<div class='{css}'>{text}</div>", unsafe_allow_html=True)
-
-        d1, d2 = st.columns(2)
-
-        with d1:
-            ndvi_df = generate_ndvi_trend(ndvi)
-            fig_ndvi = px.line(ndvi_df, x="Day", y="NDVI", title="NDVI Trend")
-            fig_ndvi.update_traces(line=dict(color="#38bdf8", width=4))
-            fig_ndvi = apply_dark_plotly(fig_ndvi)
-            st.plotly_chart(fig_ndvi, use_container_width=True, theme=None)
-
-        with d2:
-            radar_fig = soil_radar_figure(n, p, k, moisture, ph)
-            st.plotly_chart(radar_fig, use_container_width=True, theme=None)
-
-        report_text = generate_farm_report(st.session_state.latest_farm_data, st.session_state.multi_crop_df)
-        st.download_button(
-            "Download Farm Report",
-            data=report_text,
-            file_name="farm_report.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
-
-        wow_feature_box()
-
-elif page == "Multi-Crop Analysis":
-    st.markdown("## Multi-Crop Analysis")
-    st.info("No change in previous app system. Keep your existing Multi-Crop Analysis code here exactly as it was.")
-
-elif page == "Crop Recommendation":
-    st.markdown("## Crop Recommendation")
-    vals = [st.number_input(f"Feature {i+1}", value=float(80 + i)) for i in range(7)]
-    if st.button("Recommend Crop", use_container_width=True):
-        crop, conf = api_service.recommend_crop(vals)
-        st.success(f"Recommended crop: {crop} ({conf}% confidence)")
-
-elif page == "Yield Prediction":
-    st.markdown("## Yield Prediction")
-    ph = st.number_input("Soil pH", value=6.7, key="yield_ph")
-    temp = st.number_input("Temperature", value=29.0, key="yield_temp")
-    rainfall = st.number_input("Rainfall", value=120.0, key="yield_rain")
-    fertilizer = st.number_input("Fertilizer", value=85.0, key="yield_fert")
-    humidity = st.number_input("Humidity", value=70.0, key="yield_hum")
-    soil_moisture = st.number_input("Soil Moisture", value=42.0, key="yield_sm")
-    crop_name = st.selectbox("Crop", ml_bundle["all_crops"])
-    if st.button("Predict Yield", use_container_width=True):
-        y = api_service.predict_yield(ph, temp, rainfall, fertilizer, humidity, soil_moisture, crop_name)
-        st.metric("Expected Yield", f"{y} t/ha", "ML prediction")
-
-elif page == "Irrigation":
-    st.markdown("## Irrigation")
-    soil_moisture = st.number_input("Soil Moisture", value=42.0, key="irr_sm")
-    temp = st.number_input("Temperature", value=29.0, key="irr_temp")
-    humidity = st.number_input("Humidity", value=70.0, key="irr_hum")
-    ph = st.number_input("pH", value=6.8, key="irr_ph")
-    rainfall = st.number_input("Rainfall", value=100.0, key="irr_rain")
-    if st.button("Get Irrigation Plan", use_container_width=True):
-        result, action = api_service.predict_irrigation(soil_moisture, temp, humidity, ph, rainfall)
-        st.info(f"Need: {result} | Action: {action}")
-
-elif page == "Fertilizer & Soil":
-    st.markdown("## Fertilizer & Soil")
-    n = st.number_input("Nitrogen", value=45.0)
-    p = st.number_input("Phosphorus", value=38.0)
-    k = st.number_input("Potassium", value=42.0)
-
-    if st.button("Analyze Soil", use_container_width=True):
-        fert, conf = fertilizer_advice(n, p, k)
-        df = pd.DataFrame({"Nutrient": ["N", "P", "K"], "Value": [n, p, k]})
-        fig = px.bar(df, x="Nutrient", y="Value", color="Nutrient", title="Soil Nutrient Levels",
-                     color_discrete_map={"N": "#22c55e", "P": "#38bdf8", "K": "#f59e0b"})
-        fig = apply_dark_plotly(fig)
-        st.plotly_chart(fig, use_container_width=True, theme=None)
-        st.success(f"Recommendation: {fert} ({conf}% confidence)")
-
-elif page == "NDVI Analysis":
-    st.markdown("## NDVI Analysis")
-    red = st.slider("Red Band", 0.0, 1.0, 0.30)
-    nir = st.slider("NIR Band", 0.0, 1.0, 0.72)
-    temp = st.slider("Temperature", 15.0, 45.0, 29.0)
-    moisture = st.slider("Soil Moisture", 10.0, 80.0, 42.0)
-
-    if st.button("Calculate NDVI", use_container_width=True):
-        ndvi = calculate_ndvi(red, nir)
-        health = predict_health_score(ndvi, moisture, temp)
-        gauge = go.Figure(
-            go.Indicator(
-                mode="gauge+number",
-                value=health,
-                title={'text': "Health Score"},
-                gauge={
-                    'axis': {'range': [0, 100]},
-                    'bar': {'color': "#22c55e"},
-                    'bgcolor': "#0f172a",
-                    'borderwidth': 1,
-                    'bordercolor': "rgba(148,163,184,0.2)"
-                }
-            )
-        )
-        gauge.update_layout(
-            height=350,
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#e5e7eb")
-        )
-        st.plotly_chart(gauge, use_container_width=True, theme=None)
-        st.success(f"NDVI: {ndvi} | Health score: {health}%")
-
-elif page == "Disease Detection":
-    st.markdown("## 🍅🌾 Disease Detection - TOMATO & RICE")
-    st.caption("Upload tomato or rice leaf images for CNN disease prediction. Telangana Edition.")
-    
-    crop_type = st.selectbox("Select Crop", ["Tomato", "Rice"], help="Choose Tomato for tomato_disease_model.h5 or Rice for rice_disease_model.h5")
-    uploaded_file = st.file_uploader("📁 Upload crop leaf image", type=["jpg", "jpeg", "png"], key="disease_upload")
-
-    if uploaded_file is not None:
-        image = process_image(uploaded_file)
-        st.image(image, caption=f"Uploaded {crop_type} leaf image", use_container_width=True)
-
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            if st.button("🔬 Analyze Disease", type="primary", use_container_width=True):
-                try:
-                    model_key = "tomato_disease" if crop_type == "Tomato" else "rice_disease"
-                    result = cnn_service.predict(image, model_key)
-
-                    st.markdown(
-                        f"""
-                        <div class='result-card'>
-                            <h3>🎯 {crop_type} Disease Prediction</h3>
-                            <div style='font-size:1.4rem;color:#22c55e;margin:1rem 0;'>
-                                {result['class_name']}
-                            </div>
-                            <div style='background:#22c55e10;padding:0.8rem;border-radius:12px;'>
-                                <strong>Confidence:</strong> {result['confidence']}% 
-                                <span style='float:right;color:#22c55e;font-weight:700;'>✅</span>
-                            </div>
-                            <div style='margin-top:1rem;padding:0.8rem;background:#f3f4f6;color:#374151;border-radius:8px;font-size:0.9rem;'>
-                                Model: {model_key.replace('_', ' ').title()}
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-                    
-                    if result['confidence'] < 75:
-                        st.warning("⚠️ Low confidence prediction. Try clearer image or different angle.")
-                        
-                except Exception as e:
-                    st.error(f"❌ Prediction failed: {str(e)}")
-                    st.info("💡 Required files: tomato_disease_model.h5 + tomato_classes.joblib or rice_disease_model.h5 + rice_classes.joblib")
-
-elif page == "Pest Detection":
-    st.markdown("## 🐛 Rice Pest Detection")
-    st.caption("Upload rice crop images showing pest infestation for CNN prediction.")
-    
-    uploaded_file = st.file_uploader("📁 Upload rice pest image", type=["jpg", "jpeg", "png"], key="pest_upload")
-
-    if uploaded_file is not None:
-        image = process_image(uploaded_file)
-        st.image(image, caption="Uploaded rice pest image", use_container_width=True)
-
-        col1, col2 = st.columns([1, 2])
-        with col1:
-            if st.button("🔍 Detect Pest", type="primary", use_container_width=True):
-                try:
-                    result = cnn_service.predict(image, "rice_pest")
-
-                    st.markdown(
-                        f"""
-                        <div class='result-card'>
-                            <h3>🐛 Rice Pest Detection</h3>
-                            <div style='font-size:1.4rem;color:#ef4444;margin:1rem 0;'>
-                                {result['class_name']}
-                            </div>
-                            <div style='background:#ef444410;padding:0.8rem;border-radius:12px;'>
-                                <strong>Confidence:</strong> {result['confidence']}% 
-                                <span style='float:right;color:#ef4444;font-weight:700;'>🚨</span>
-                            </div>
-                            <div style='margin-top:1rem;padding:0.8rem;background:#fef2f2;color:#991b1b;border-radius:8px;font-size:0.9rem;'>
-                                Model: rice_pest_model.h5 | Action: Apply IPM immediately
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-                    
-                    if result['confidence'] > 85:
-                        st.error("🚨 HIGH CONFIDENCE PEST DETECTION - Take immediate action!")
-                    elif result['confidence'] < 70:
-                        st.warning("⚠️ Low confidence. Verify with agricultural expert.")
-                        
-                except Exception as e:
-                    st.error(f"❌ Pest detection failed: {str(e)}")
-                    st.info("💡 Required: rice_pest_model.h5 + rice_pest_classes.joblib in models/ folder")
-
-elif page == "Leaf Detection":
-    st.markdown("## 🍃 Leaf Detection - Multi-Crop")
-    st.caption("General leaf detection module. Works with any crop leaf images.")
-    
-    leaf_mode = st.selectbox("Detection Mode", [
-        "General Leaf Detection", 
-        "Tomato Leaf Analysis", 
-        "Rice Leaf Analysis"
-    ])
-    
-    uploaded_file = st.file_uploader("📁 Upload leaf image", type=["jpg", "jpeg", "png"], key="leaf_upload")
-
-    if uploaded_file is not None:
-        image = process_image(uploaded_file)
-        st.image(image, caption="Uploaded leaf image for analysis", use_container_width=True)
-
-        if st.button("🌿 Analyze Leaf", type="primary", use_container_width=True):
-            try:
-                if cnn_service.has_model("leaf_detection"):
-                    result = cnn_service.predict(image, "leaf_detection")
-                    
-                    st.markdown(
-                        f"""
-                        <div class='result-card'>
-                            <h3>🍃 Leaf Classification</h3>
-                            <div style='font-size:1.4rem;color:#10b981;margin:1rem 0;'>
-                                {result['class_name']}
-                            </div>
-                            <div style='background:#10b98110;padding:0.8rem;border-radius:12px;'>
-                                <strong>Confidence:</strong> {result['confidence']}% 
-                                <span style='float:right;color:#10b981;font-weight:700;'>✅</span>
-                            </div>
-                            <div style='margin-top:1rem;padding:0.8rem;background:#f0fdf4;color:#166534;border-radius:8px;font-size:0.9rem;'>
-                                Model: leaf_model.h5 | Multi-crop compatible
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
-                    )
-                else:
-                    st.warning("🔄 Leaf model not deployed yet.")
-                    st.info("""
-                    **To enable Leaf Detection:**
-                    1. Add `leaf_model.h5` to models/
-                    2. Add `leaf_classes.joblib` to models/  
-                    3. Restart app
-                    """)
-                    
-            except Exception as e:
-                st.error(f"❌ Leaf analysis failed: {str(e)}")
-
-elif page == "AI Assistant":
-    st.markdown("## 🤖 AI Farm Assistant")
-    toolbar_text = (
-        f"💬 AgriVision AI Chat | 📍 {st.session_state.district} | 🌾 {st.session_state.season} | "
-        + ("✅ Smart Advisor data loaded" if st.session_state.latest_farm_data else "⚠️ Run Smart Advisor first")
+    st.markdown("---")
+    st.markdown("### 📍 Location")
+    st.markdown("Hyderabad, Telangana")
+    st.markdown("### ℹ️ About")
+    st.markdown(
+        "AgroSense AI integrates multiple deep-learning models for crop disease, pest, "
+        "and nutrient deficiency detection tailored to Telangana agri-conditions."
     )
 
-    st.markdown(f"<div class='chat-toolbar'>{toolbar_text}</div>", unsafe_allow_html=True)
+# ─────────────────────────────────────────────────────────────────────────────
+# Header
+# ─────────────────────────────────────────────────────────────────────────────
+MODULE_META = {
+    "🏠 Dashboard": (
+        "🌿 AgroSense AI — Smart Farm Intelligence",
+        "AI-powered crop disease, pest & nutrient deficiency detection platform",
+    ),
+    "🍅 Tomato Disease Detection": (
+        "🍅 Tomato Disease Detection",
+        "Upload a tomato leaf image to detect diseases using CNN",
+    ),
+    "🌾 Rice Disease Detection": (
+        "🌾 Rice Disease Detection",
+        "Upload a rice leaf image to identify common rice diseases",
+    ),
+    "🐛 Rice Pest Detection": (
+        "🐛 Rice Pest Detection",
+        "Upload a rice crop image to detect pest infestations",
+    ),
+    "🧪 Nutrient Deficiency Detection": (
+        "🧪 Nutrient Deficiency Detection",
+        "Upload a crop leaf image to diagnose nutrient deficiencies",
+    ),
+}
 
-    # Render chat history
-    for message in st.session_state.chat_history:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+title, subtitle = MODULE_META[module]
+st.markdown(f"""
+<div class="main-header">
+    <h1>{title}</h1>
+    <p>{subtitle}</p>
+</div>
+""", unsafe_allow_html=True)
 
-    # Chat input
-    if prompt := st.chat_input("Ask about crop disease, rice pests, tomato issues, irrigation, yield, or Telangana farming..."):
-        st.session_state.chat_history.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.markdown(prompt)
+# ─────────────────────────────────────────────────────────────────────────────
+# Generic Detection UI
+# ─────────────────────────────────────────────────────────────────────────────
+def detection_ui(model, class_dict, module_key: str, info_map: dict = None, target_size=(224, 224)):
+    if model is None or class_dict is None:
+        st.error(
+            "⚠️ Required model/class file not found. Please ensure the model and joblib files "
+            "exist in the correct paths."
+        )
+        with st.expander("📁 Expected file paths"):
+            for _, v in PATHS.items():
+                st.code(v)
+        return
 
-        with st.chat_message("assistant"):
-            reply = chatbot_reply(prompt, st.session_state.latest_farm_data)
-            st.markdown(reply)
-            st.session_state.chat_history.append({"role": "assistant", "content": reply})
+    col_upload, col_result = st.columns([1, 1], gap="large")
 
+    with col_upload:
+        st.markdown("#### 📤 Upload Leaf / Crop Image")
+        uploaded = st.file_uploader(
+            "Choose an image (JPG / PNG / WEBP)",
+            type=["jpg", "jpeg", "png", "webp"],
+            key=f"uploader_{module_key}",
+            label_visibility="collapsed",
+        )
+        if uploaded:
+            st.image(uploaded, caption="Uploaded Image", use_container_width=True)
+
+    with col_result:
+        st.markdown("#### 🔬 Analysis Result")
+        if not uploaded:
+            st.info("⬅️ Upload an image to run detection.")
+            return
+
+        with st.spinner("🤖 Running inference..."):
+            try:
+                img_array, pil_img = preprocess_image(uploaded, target_size)
+                label, confidence, all_probs = predict_top_class(model, class_dict, img_array)
+            except Exception as e:
+                st.error(f"Inference failed: {e}")
+                return
+
+        result_box(label, confidence)
+
+        if info_map and label in info_map:
+            info = info_map[label]
+            st.markdown("---")
+            st.markdown(f"**📋 About:** {label}")
+            if "cause" in info:
+                st.markdown(f"- **Cause:** {info['cause']}")
+            if "severity" in info:
+                st.markdown(f"- **Severity:** {info['severity']}")
+            if "treatment" in info:
+                st.markdown(f"- **Treatment:** {info['treatment']}")
+
+        st.markdown("---")
+        st.markdown("**📊 Top Predictions**")
+        top5 = sorted(all_probs.items(), key=lambda x: x[1], reverse=True)[:5]
+        for lbl, prob in top5:
+            st.progress(int(prob), text=f"{lbl}: {prob:.1f}%")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Info Maps
+# ─────────────────────────────────────────────────────────────────────────────
+TOMATO_INFO = {
+    "Tomato_Bacterial_spot": {
+        "cause": "Xanthomonas campestris pv. vesicatoria",
+        "severity": "⚠️ Moderate – High",
+        "treatment": "Copper-based bactericides; remove infected leaves; crop rotation.",
+    },
+    "Tomato_Early_blight": {
+        "cause": "Alternaria solani fungus",
+        "severity": "⚠️ Moderate",
+        "treatment": "Apply mancozeb or chlorothalonil fungicide; avoid overhead watering.",
+    },
+    "Tomato_Late_blight": {
+        "cause": "Phytophthora infestans oomycete",
+        "severity": "🔴 High – Can destroy entire crop",
+        "treatment": "Metalaxyl + mancozeb spray; destroy infected plants immediately.",
+    },
+    "Tomato_Leaf_Mold": {
+        "cause": "Passalora fulva fungus",
+        "severity": "⚠️ Moderate",
+        "treatment": "Improve air circulation; apply chlorothalonil fungicide.",
+    },
+    "Tomato_Mosaic_virus": {
+        "cause": "Tomato mosaic virus (ToMV)",
+        "severity": "🔴 High – No chemical cure",
+        "treatment": "Remove infected plants; use resistant varieties; control aphids.",
+    },
+    "Tomato_healthy": {
+        "cause": "N/A",
+        "severity": "✅ Healthy",
+        "treatment": "No treatment required. Maintain good agronomic practices.",
+    },
+}
+
+RICE_DISEASE_INFO = {
+    "Bacterial_leaf_blight": {
+        "cause": "Xanthomonas oryzae pv. oryzae",
+        "severity": "🔴 High",
+        "treatment": "Copper oxychloride spray; resistant varieties like Samba Mahsuri.",
+    },
+    "Brown_spot": {
+        "cause": "Helminthosporium oryzae",
+        "severity": "⚠️ Moderate",
+        "treatment": "Mancozeb 2.5 g/L spray; balanced N-P-K fertilisation.",
+    },
+    "Blast": {
+        "cause": "Magnaporthe oryzae",
+        "severity": "🔴 High",
+        "treatment": "Tricyclazole 0.06% spray; avoid excess nitrogen.",
+    },
+    "Healthy": {
+        "cause": "N/A",
+        "severity": "✅ Healthy",
+        "treatment": "No treatment required.",
+    },
+}
+
+RICE_PEST_INFO = {
+    "Stem_borer": {
+        "cause": "Scirpophaga incertulas larvae",
+        "severity": "🔴 High – Dead heart / White ear",
+        "treatment": "Cartap hydrochloride 4G @ 20 kg/ha; light traps for moths.",
+    },
+    "Brown_plant_hopper": {
+        "cause": "Nilaparvata lugens",
+        "severity": "🔴 High – Hopperburn",
+        "treatment": "Imidacloprid 200 SL @ 100 mL/ha; avoid excess N.",
+    },
+    "Leaf_folder": {
+        "cause": "Cnaphalocrocis medinalis larvae",
+        "severity": "⚠️ Moderate",
+        "treatment": "Chlorpyrifos 20 EC @ 1.5 L/ha spray; drain field periodically.",
+    },
+    "Healthy": {
+        "cause": "N/A",
+        "severity": "✅ No pest detected",
+        "treatment": "No action required.",
+    },
+}
+
+NUTRIENT_INFO = {
+    "Nitrogen Deficiency": {
+        "cause": "Low soil N or waterlogged, poorly aerated soil",
+        "severity": "⚠️ Moderate – affects yield significantly",
+        "treatment": "Apply urea (46% N) @ 30–50 kg/ha as top dressing.",
+    },
+    "Phosphorus Deficiency": {
+        "cause": "Acidic soils, poor root development",
+        "severity": "⚠️ Moderate",
+        "treatment": "Single superphosphate 100 kg/ha basal application.",
+    },
+    "Potassium Deficiency": {
+        "cause": "Sandy or light soils with leaching",
+        "severity": "⚠️ Moderate",
+        "treatment": "Muriate of potash 50 kg/ha; foliar KNO₃ spray.",
+    },
+    "Iron Deficiency": {
+        "cause": "Alkaline soils with high pH (>7.5)",
+        "severity": "⚠️ Moderate – causes interveinal chlorosis",
+        "treatment": "FeSO₄ 0.5% foliar spray; soil acidification.",
+    },
+    "Magnesium Deficiency": {
+        "cause": "Acidic or sandy soils",
+        "severity": "⚠️ Moderate",
+        "treatment": "Dolomite lime or MgSO₄ 10 kg/ha spray.",
+    },
+    "Calcium Deficiency": {
+        "cause": "Acidic soils or low Ca availability",
+        "severity": "⚠️ Moderate",
+        "treatment": "Lime application; foliar CaCl₂ 0.5% spray.",
+    },
+    "Sulfur Deficiency": {
+        "cause": "Low organic matter soils",
+        "severity": "⚠️ Moderate",
+        "treatment": "Gypsum (CaSO₄) 200 kg/ha; single superphosphate.",
+    },
+    "Healthy / No Deficiency": {
+        "cause": "N/A",
+        "severity": "✅ Healthy – Nutrients balanced",
+        "treatment": "Continue current fertilisation schedule.",
+    },
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Dashboard
+# ─────────────────────────────────────────────────────────────────────────────
+if module == "🏠 Dashboard":
+    st.markdown("### 📊 System Overview")
+    c1, c2, c3, c4 = st.columns(4)
+
+    models_loaded = sum([
+        tomato_disease_model is not None,
+        rice_disease_model is not None,
+        rice_pest_model is not None,
+        nutrient_model is not None,
+    ])
+
+    c1.metric("🤖 AI Models Loaded", f"{models_loaded}/4")
+    c2.metric("🍅 Tomato Classes", len(tomato_classes) if tomato_classes else "N/A")
+    c3.metric("🌾 Rice Disease Classes", len(rice_classes) if rice_classes else "N/A")
+    c4.metric("🐛 Rice Pest Classes", len(rice_pest_classes) if rice_pest_classes else "N/A")
+
+    st.markdown("---")
+    st.markdown("### 🧩 Available Detection Modules")
+
+    m1, m2 = st.columns(2)
+    with m1:
+        st.markdown("""
+        <div class="module-card">
+            <div class="module-title">🍅 Tomato Disease Detection</div>
+            <p style="color:#4a6355;font-size:0.9rem;">
+                Detects bacterial spot, early blight, late blight, leaf mold,
+                mosaic virus, septoria leaf spot, spider mites, target spot,
+                yellow leaf curl, and healthy tomato leaves using
+                <strong>tomato_disease_model.h5</strong>.
+            </p>
+        </div>
+        <div class="module-card">
+            <div class="module-title">🐛 Rice Pest Detection</div>
+            <p style="color:#4a6355;font-size:0.9rem;">
+                Identifies rice pests including stem borer, brown plant hopper,
+                leaf folder, and others using <strong>rice_pest_model.h5</strong>.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    with m2:
+        st.markdown("""
+        <div class="module-card">
+            <div class="module-title">🌾 Rice Disease Detection</div>
+            <p style="color:#4a6355;font-size:0.9rem;">
+                Identifies bacterial leaf blight, blast, brown spot, sheath blight,
+                and tungro using <strong>rice_disease_model.h5</strong>.
+            </p>
+        </div>
+        <div class="module-card">
+            <div class="module-title">🧪 Nutrient Deficiency Detection</div>
+            <p style="color:#4a6355;font-size:0.9rem;">
+                Diagnoses nitrogen, phosphorus, potassium, iron, magnesium,
+                calcium, and sulfur deficiencies using
+                <strong>nutrient_deficiency_cnn_model.keras</strong>.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+    st.markdown("---")
+    st.info("👈 Select a detection module from the sidebar to get started.")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Tomato Disease Detection
+# ─────────────────────────────────────────────────────────────────────────────
+elif module == "🍅 Tomato Disease Detection":
+    st.markdown("""
+    > **Model:** `tomato_disease_model.h5` | **Classes:** `models/tomato_classes.joblib`
+    """)
+    detection_ui(
+        model=tomato_disease_model,
+        class_dict=tomato_classes,
+        module_key="tomato_disease",
+        info_map=TOMATO_INFO,
+    )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rice Disease Detection
+# ─────────────────────────────────────────────────────────────────────────────
+elif module == "🌾 Rice Disease Detection":
+    st.markdown("""
+    > **Model:** `rice_disease_model.h5` | **Classes:** `rice_classes.joblib`
+    """)
+    detection_ui(
+        model=rice_disease_model,
+        class_dict=rice_classes,
+        module_key="rice_disease",
+        info_map=RICE_DISEASE_INFO,
+    )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rice Pest Detection
+# ─────────────────────────────────────────────────────────────────────────────
+elif module == "🐛 Rice Pest Detection":
+    st.markdown("""
+    > **Model:** `rice_pest_model.h5` | **Classes:** `rice_pest_classes.joblib`
+    """)
+    detection_ui(
+        model=rice_pest_model,
+        class_dict=rice_pest_classes,
+        module_key="rice_pest",
+        info_map=RICE_PEST_INFO,
+    )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Nutrient Deficiency Detection
+# ─────────────────────────────────────────────────────────────────────────────
+elif module == "🧪 Nutrient Deficiency Detection":
+    st.markdown("""
+    > **Model:** `nutrient_deficiency_cnn_model.keras` | **Classes:** default nutrient class map
+    """)
+    nutrient_classes = DEFAULT_NUTRIENT_CLASSES
+    detection_ui(
+        model=nutrient_model,
+        class_dict=nutrient_classes,
+        module_key="nutrient",
+        info_map=NUTRIENT_INFO,
+    )
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Footer
+# ─────────────────────────────────────────────────────────────────────────────
 st.markdown("---")
 st.markdown(
-    "<div style='text-align:center;color:#94a3b8;padding:18px;font-size:14px;'>🌾 AgriVision AI | Telangana Agritech | CNN Disease/Pest/Leaf Detection | NO STRUCTURAL CHANGES</div>",
-    unsafe_allow_html=True
+    "<p style='text-align:center;color:#7a9e8a;font-size:0.82rem;'>"
+    "AgroSense AI • Built for Telangana Farmers • Powered by TensorFlow/Keras + Streamlit"
+    "</p>",
+    unsafe_allow_html=True,
 )
