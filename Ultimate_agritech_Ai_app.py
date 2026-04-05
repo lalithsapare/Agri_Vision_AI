@@ -283,36 +283,11 @@ class CNNModelService:
             self.errors[model_key] = str(e)
 
     def _load_all(self):
-        self._load_one(
-            "tomato_disease",
-            "tomato_disease_model.h5",
-            "tomato_classes.joblib"
-        )
-
-        self._load_one(
-            "rice_disease",
-            "rice_disease_model.h5",
-            "rice_classes.joblib"
-        )
-
-        self._load_one(
-            "rice_pest",
-            "rice_pest_model.h5",
-            "rice_pest_classes.joblib"
-        )
-
-        self._load_one(
-            "nutrient_deficiency",
-            "nutrient_deficiency_cnn_model.keras",
-            "nutrient_deficiency_classes.joblib",
-            fallback_classes=self.default_nutrient_classes
-        )
-
-        self._load_one(
-            "leaf_detection",
-            "leaf_model.h5",
-            "leaf_classes.joblib"
-        )
+        self._load_one("tomato_disease", "tomato_disease_model.h5", "tomato_classes.joblib")
+        self._load_one("rice_disease", "rice_disease_model.h5", "rice_classes.joblib")
+        self._load_one("rice_pest", "rice_pest_model.h5", "rice_pest_classes.joblib")
+        self._load_one("nutrient_deficiency", "nutrient_deficiency_cnn_model.keras", "nutrient_deficiency_classes.joblib", fallback_classes=self.default_nutrient_classes)
+        self._load_one("leaf_detection", "leaf_model.h5", "leaf_classes.joblib")
 
     def has_model(self, model_key):
         return model_key in self.models
@@ -406,11 +381,7 @@ def train_ml_models():
     crop_encoder = LabelEncoder()
     y_crop_enc = crop_encoder.fit_transform(y_crop)
 
-    crop_model = RandomForestClassifier(
-        n_estimators=220,
-        max_depth=14,
-        random_state=42
-    )
+    crop_model = RandomForestClassifier(n_estimators=220, max_depth=14, random_state=42)
     crop_model.fit(X_crop, y_crop_enc)
 
     X_yield = []
@@ -437,11 +408,7 @@ def train_ml_models():
             X_yield.append([ph, temp, rainfall, fertilizer, humidity, soil_moisture, crop_factor])
             y_yield.append(max(0.8, y))
 
-    yield_model = RandomForestRegressor(
-        n_estimators=260,
-        max_depth=16,
-        random_state=42
-    )
+    yield_model = RandomForestRegressor(n_estimators=260, max_depth=16, random_state=42)
     yield_model.fit(X_yield, y_yield)
 
     X_irr = []
@@ -467,11 +434,7 @@ def train_ml_models():
     irr_encoder = LabelEncoder()
     y_irr_enc = irr_encoder.fit_transform(y_irr)
 
-    irrigation_model = RandomForestClassifier(
-        n_estimators=180,
-        max_depth=10,
-        random_state=42
-    )
+    irrigation_model = RandomForestClassifier(n_estimators=180, max_depth=10, random_state=42)
     irrigation_model.fit(X_irr, y_irr_enc)
 
     return {
@@ -486,9 +449,6 @@ def train_ml_models():
 
 ml_bundle = train_ml_models()
 
-# =========================
-# BACKEND-LIKE SERVICE LAYER
-# =========================
 class AgriAPIService:
     def __init__(self, bundle):
         self.bundle = bundle
@@ -518,9 +478,6 @@ class AgriAPIService:
 
 api_service = AgriAPIService(ml_bundle)
 
-# =========================
-# HELPERS
-# =========================
 def calculate_ndvi(red, nir):
     red = float(red)
     nir = float(nir)
@@ -552,13 +509,7 @@ def soil_radar_figure(n, p, k, moisture, ph):
         "Metric": ["Nitrogen", "Phosphorus", "Potassium", "Moisture", "pH x10"],
         "Value": [n, p, k, moisture, ph * 10]
     })
-    fig = px.line_polar(
-        radar_df,
-        r="Value",
-        theta="Metric",
-        line_close=True,
-        title="Soil Radar Chart"
-    )
+    fig = px.line_polar(radar_df, r="Value", theta="Metric", line_close=True, title="Soil Radar Chart")
     fig.update_traces(fill="toself", line_color="#22c55e")
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
@@ -695,8 +646,7 @@ def chatbot_reply(question, farm_data):
 """
 
 def process_image(uploaded_file):
-    image = Image.open(uploaded_file).convert("RGB")
-    return image
+    return Image.open(uploaded_file).convert("RGB")
 
 def render_header():
     st.markdown(
@@ -764,42 +714,9 @@ st.session_state.district = st.sidebar.selectbox(
 )
 st.session_state.season = st.sidebar.selectbox("Season", ["Kharif", "Rabi"])
 
-with st.sidebar.expander("CNN Model Status"):
-    status_rows = [
-        {
-            "Module": "Tomato Disease",
-            "Loaded": cnn_service.has_model("tomato_disease"),
-            "Info": "OK" if cnn_service.has_model("tomato_disease") else cnn_service.get_error("tomato_disease")
-        },
-        {
-            "Module": "Rice Disease",
-            "Loaded": cnn_service.has_model("rice_disease"),
-            "Info": "OK" if cnn_service.has_model("rice_disease") else cnn_service.get_error("rice_disease")
-        },
-        {
-            "Module": "Rice Pest",
-            "Loaded": cnn_service.has_model("rice_pest"),
-            "Info": "OK" if cnn_service.has_model("rice_pest") else cnn_service.get_error("rice_pest")
-        },
-        {
-            "Module": "Leaf Detection",
-            "Loaded": cnn_service.has_model("leaf_detection"),
-            "Info": "OK" if cnn_service.has_model("leaf_detection") else cnn_service.get_error("leaf_detection")
-        },
-        {
-            "Module": "Nutrient Deficiency",
-            "Loaded": cnn_service.has_model("nutrient_deficiency"),
-            "Info": "OK" if cnn_service.has_model("nutrient_deficiency") else cnn_service.get_error("nutrient_deficiency")
-        }
-    ]
-    st.dataframe(pd.DataFrame(status_rows), use_container_width=True, hide_index=True)
-
 render_header()
 render_top_dashboard()
 
-# =========================
-# PAGES
-# =========================
 if page == "Dashboard":
     st.markdown("## Farm Health Overview")
 
@@ -815,12 +732,7 @@ if page == "Dashboard":
     col1, col2 = st.columns([2, 1])
 
     with col1:
-        fig_line = px.line(
-            trend_df,
-            x="Day",
-            y="Health Index",
-            title="Crop Health Trend - 30 Days"
-        )
+        fig_line = px.line(trend_df, x="Day", y="Health Index", title="Crop Health Trend - 30 Days")
         fig_line.update_traces(line=dict(color="#22c55e", width=4))
         fig_line = apply_dark_plotly(fig_line)
         st.plotly_chart(fig_line, use_container_width=True, theme=None)
@@ -893,45 +805,6 @@ elif page == "Smart Advisor":
         x2.metric("Irrigation", irrigation, action)
         x3.metric("Yield", f"{yield_pred} t/ha", "Real ML prediction")
 
-        st.markdown(
-            f"<div class='health-card'><h3 style='color:#f8fafc;'>Final Farm Decision</h3>"
-            f"<p><strong>Recommended crop:</strong> {crop}</p>"
-            f"<p><strong>Irrigation:</strong> {irrigation} - {action}</p>"
-            f"<p><strong>Fertilizer:</strong> {fert}</p>"
-            f"<p><strong>NDVI:</strong> {ndvi} | <strong>Health score:</strong> {health}%</p>"
-            f"<p><strong>Expected yield:</strong> {yield_pred} t/ha</p></div>",
-            unsafe_allow_html=True
-        )
-
-        st.markdown("### Smart Alerts")
-        for level, text in smart_alerts(health, ndvi, n, p, k):
-            css = "alert-high" if level == "high" else "alert-med" if level == "med" else "alert-good"
-            st.markdown(f"<div class='{css}'>{text}</div>", unsafe_allow_html=True)
-
-        d1, d2 = st.columns(2)
-
-        with d1:
-            ndvi_df = generate_ndvi_trend(ndvi)
-            fig_ndvi = px.line(ndvi_df, x="Day", y="NDVI", title="NDVI Trend")
-            fig_ndvi.update_traces(line=dict(color="#38bdf8", width=4))
-            fig_ndvi = apply_dark_plotly(fig_ndvi)
-            st.plotly_chart(fig_ndvi, use_container_width=True, theme=None)
-
-        with d2:
-            radar_fig = soil_radar_figure(n, p, k, moisture, ph)
-            st.plotly_chart(radar_fig, use_container_width=True, theme=None)
-
-        report_text = generate_farm_report(st.session_state.latest_farm_data, st.session_state.multi_crop_df)
-        st.download_button(
-            "Download Farm Report",
-            data=report_text,
-            file_name="farm_report.txt",
-            mime="text/plain",
-            use_container_width=True
-        )
-
-        wow_feature_box()
-
 elif page == "Multi-Crop Analysis":
     st.markdown("## Multi-Crop Analysis")
     st.info("No change in previous app system. Keep your existing Multi-Crop Analysis code here exactly as it was.")
@@ -992,50 +865,29 @@ elif page == "NDVI Analysis":
     if st.button("Calculate NDVI", use_container_width=True):
         ndvi = calculate_ndvi(red, nir)
         health = predict_health_score(ndvi, moisture, temp)
-        gauge = go.Figure(
-            go.Indicator(
-                mode="gauge+number",
-                value=health,
-                title={'text': "Health Score"},
-                gauge={
-                    'axis': {'range': [0, 100]},
-                    'bar': {'color': "#22c55e"},
-                    'bgcolor': "#0f172a",
-                    'borderwidth': 1,
-                    'bordercolor': "rgba(148,163,184,0.2)"
-                }
-            )
-        )
-        gauge.update_layout(
-            height=350,
-            paper_bgcolor="rgba(0,0,0,0)",
-            font=dict(color="#e5e7eb")
-        )
+        gauge = go.Figure(go.Indicator(
+            mode="gauge+number",
+            value=health,
+            title={'text': "Health Score"},
+            gauge={'axis': {'range': [0, 100]}, 'bar': {'color': "#22c55e"}}
+        ))
+        gauge.update_layout(height=350, paper_bgcolor="rgba(0,0,0,0)", font=dict(color="#e5e7eb"))
         st.plotly_chart(gauge, use_container_width=True, theme=None)
         st.success(f"NDVI: {ndvi} | Health score: {health}%")
 
 elif page == "Disease Detection":
     st.markdown("## Disease Detection")
-    st.caption("No change in previous app system. Added CNN model prediction for Tomato and Rice disease.")
-
     crop_type = st.selectbox("Select Crop for Disease Detection", ["Tomato", "Rice"])
     uploaded_file = st.file_uploader("Upload crop leaf image", type=["jpg", "jpeg", "png"], key="disease_upload")
-
     if uploaded_file:
         image = process_image(uploaded_file)
         st.image(image, caption="Uploaded image", use_container_width=True)
-
         if st.button("Analyze Disease", use_container_width=True):
             try:
                 model_key = "tomato_disease" if crop_type == "Tomato" else "rice_disease"
                 result = cnn_service.predict(image, model_key)
-
                 st.markdown(
-                    f"<div class='result-card'>"
-                    f"<h3>{crop_type} Disease Prediction</h3>"
-                    f"<p><strong>Predicted class:</strong> {result['class_name']}</p>"
-                    f"<p><strong>Confidence:</strong> {result['confidence']}%</p>"
-                    f"</div>",
+                    f"<div class='result-card'><h3>{crop_type} Disease Prediction</h3><p><strong>Predicted class:</strong> {result['class_name']}</p><p><strong>Confidence:</strong> {result['confidence']}%</p></div>",
                     unsafe_allow_html=True
                 )
             except Exception as e:
@@ -1043,24 +895,15 @@ elif page == "Disease Detection":
 
 elif page == "Pest Detection":
     st.markdown("## Pest Detection")
-    st.caption("No change in previous app system. Added CNN model prediction for Rice pest detection.")
-
     uploaded_file = st.file_uploader("Upload rice pest image", type=["jpg", "jpeg", "png"], key="pest_upload")
-
     if uploaded_file:
         image = process_image(uploaded_file)
         st.image(image, caption="Uploaded pest image", use_container_width=True)
-
         if st.button("Analyze Pest", use_container_width=True):
             try:
                 result = cnn_service.predict(image, "rice_pest")
-
                 st.markdown(
-                    f"<div class='result-card'>"
-                    f"<h3>Rice Pest Prediction</h3>"
-                    f"<p><strong>Predicted class:</strong> {result['class_name']}</p>"
-                    f"<p><strong>Confidence:</strong> {result['confidence']}%</p>"
-                    f"</div>",
+                    f"<div class='result-card'><h3>Rice Pest Prediction</h3><p><strong>Predicted class:</strong> {result['class_name']}</p><p><strong>Confidence:</strong> {result['confidence']}%</p></div>",
                     unsafe_allow_html=True
                 )
             except Exception as e:
@@ -1068,25 +911,16 @@ elif page == "Pest Detection":
 
 elif page == "Leaf Detection":
     st.markdown("## Leaf Detection")
-    st.caption("No change in previous app system. Leaf detection module added for CNN model integration.")
-
-    leaf_type = st.selectbox("Leaf Detection Mode", ["General Leaf Detection (future model hook)", "Tomato Leaf View", "Rice Leaf View"])
     uploaded_file = st.file_uploader("Upload leaf image", type=["jpg", "jpeg", "png"], key="leaf_upload")
-
     if uploaded_file:
         image = process_image(uploaded_file)
         st.image(image, caption="Uploaded leaf image", use_container_width=True)
-
         if st.button("Analyze Leaf", use_container_width=True):
             try:
                 if cnn_service.has_model("leaf_detection"):
                     result = cnn_service.predict(image, "leaf_detection")
                     st.markdown(
-                        f"<div class='result-card'>"
-                        f"<h3>Leaf Detection Prediction</h3>"
-                        f"<p><strong>Predicted class:</strong> {result['class_name']}</p>"
-                        f"<p><strong>Confidence:</strong> {result['confidence']}%</p>"
-                        f"</div>",
+                        f"<div class='result-card'><h3>Leaf Detection Prediction</h3><p><strong>Predicted class:</strong> {result['class_name']}</p><p><strong>Confidence:</strong> {result['confidence']}%</p></div>",
                         unsafe_allow_html=True
                     )
                 else:
@@ -1096,28 +930,15 @@ elif page == "Leaf Detection":
 
 elif page == "Nutrient Deficiency":
     st.markdown("## Nutrient Deficiency Detection")
-    st.caption("No change in previous app system. Added CNN model prediction for nutrient deficiency detection.")
-
-    uploaded_file = st.file_uploader(
-        "Upload nutrient deficiency leaf image",
-        type=["jpg", "jpeg", "png"],
-        key="nutrient_upload"
-    )
-
+    uploaded_file = st.file_uploader("Upload nutrient deficiency leaf image", type=["jpg", "jpeg", "png"], key="nutrient_upload")
     if uploaded_file:
         image = process_image(uploaded_file)
         st.image(image, caption="Uploaded nutrient image", use_container_width=True)
-
         if st.button("Analyze Nutrient Deficiency", use_container_width=True):
             try:
                 result = cnn_service.predict(image, "nutrient_deficiency")
-
                 st.markdown(
-                    f"<div class='result-card'>"
-                    f"<h3>Nutrient Deficiency Prediction</h3>"
-                    f"<p><strong>Predicted class:</strong> {result['class_name']}</p>"
-                    f"<p><strong>Confidence:</strong> {result['confidence']}%</p>"
-                    f"</div>",
+                    f"<div class='result-card'><h3>Nutrient Deficiency Prediction</h3><p><strong>Predicted class:</strong> {result['class_name']}</p><p><strong>Confidence:</strong> {result['confidence']}%</p></div>",
                     unsafe_allow_html=True
                 )
             except Exception as e:
@@ -1129,7 +950,6 @@ elif page == "AI Assistant":
         f"💬 AgriVision AI Chat | 📍 {st.session_state.district} | 🌾 {st.session_state.season} | "
         + ("✅ Smart Advisor data loaded" if st.session_state.latest_farm_data else "⚠️ Run Smart Advisor for personalized context")
     )
-
     st.markdown(f"<div class='chat-toolbar'>{toolbar_text}</div>", unsafe_allow_html=True)
 
     for message in st.session_state.chat_history:
@@ -1138,10 +958,8 @@ elif page == "AI Assistant":
 
     if prompt := st.chat_input("Ask about irrigation, crop, disease, fertilizer, pest, or Telangana farming..."):
         st.session_state.chat_history.append({"role": "user", "content": prompt})
-
         with st.chat_message("user"):
             st.markdown(prompt)
-
         with st.chat_message("assistant"):
             reply = chatbot_reply(prompt, st.session_state.latest_farm_data)
             st.markdown(reply)
