@@ -10,7 +10,7 @@ ML modules handle prediction and recommendation tasks using farm input data.
 DL modules handle crop image analysis and vegetation health monitoring.
 Both are integrated into one AgriVision AI combined app for practical deployment.
 
-Project Modules: 
+Project Modules : 
 Machine Learning Modules :
 
 Crop Recommendation.
@@ -19,13 +19,13 @@ Weather Prediction :Temperature Prediction ,Rainfall Prediction.
 Irrigation Prediction.
 Fertilizer Prediction.
 
-Deep Learning Modules:
+Deep Learning Modules :
 Tomato Disease Detection.
 Rice Disease Detection.
 Rice Pest Detection.
 Nutrient Deficiency Detection.
 
-Project Goal
+Project Goal : 
 The main goal of AgriVision AI is to help users make better farming decisions through AI-powered intelligence. It supports:
 Choosing the right crop
 Predicting weather-related farming conditions.
